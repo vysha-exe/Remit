@@ -1,0 +1,17 @@
+# Node modules
+/backend/node_modules/
+/frontend/node_modules/
+
+# Next.js build output
+/frontend/.next/
+
+# Environment files
+.env
+*.env
+
+# macOS
+.DS_Store
+
+# IDEs
+.vscode/
+.idea/

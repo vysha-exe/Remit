@@ -143,6 +143,14 @@ const CHINA_BANKS = [
   "China Guangfa Bank",
 ]
 
+function formatCardNumber(value: string) {
+  return value
+    .replace(/\D/g, "")
+    .slice(0, 16)
+    .replace(/(.{4})/g, "$1 ")
+    .trim();
+}
+
 export default function HomePage() {
   const [amount, setAmount] = useState("100");
   const [senderName, setSenderName] = useState("");
@@ -547,8 +555,10 @@ export default function HomePage() {
                   />
                   <input
                     type="text"
+                    inputMode="numeric"
+                    pattern="[0-9 ]*"
                     value={recipientCardNumber}
-                    onChange={(e) => setRecipientCardNumber(e.target.value)}
+                    onChange={(e) => setRecipientCardNumber(formatCardNumber(e.target.value))}
                     className="w-full rounded-xl border border-zinc-600 bg-zinc-900 px-4 py-2.5 text-white outline-none focus:border-orange-500"
                     placeholder="Card number"
                     required
@@ -574,16 +584,6 @@ export default function HomePage() {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-orange-500/40 bg-orange-500/10 p-3 text-sm text-orange-100">
-                Estimated receive (live):{" "}
-                <strong>
-                  {fxRate?.currency || "..."} {receivePreview}
-                </strong>
-                <span className="ml-2 text-xs text-zinc-400">
-                  {fxRate ? `1 USD = ${fxRate.usdToDestinationRate.toFixed(4)} ${fxRate.currency}` : "Loading rate..."}
-                </span>
-              </div>
-              {rateError ? <p className="text-xs text-amber-300">{rateError}</p> : null}
               <label className="flex items-start gap-2 rounded-xl border border-zinc-700 bg-zinc-950 p-3 text-sm text-zinc-300">
                 <input
                   type="checkbox"
@@ -611,7 +611,17 @@ export default function HomePage() {
           </section>
 
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-white">Transaction</h2>
+            <div className="rounded-xl border border-orange-500/40 bg-orange-500/10 p-4 text-sm text-orange-100">
+              <p className="text-sm font-medium text-orange-200">Estimated receive</p>
+              <p className="mt-2 text-base font-semibold text-white">
+                {fxRate?.currency || "..."} {receivePreview}
+              </p>
+              <p className="mt-1 text-xs text-zinc-400">
+                {fxRate ? `1 USD = ${fxRate.usdToDestinationRate.toFixed(4)} ${fxRate.currency}` : "Loading rate..."}
+              </p>
+              {rateError ? <p className="mt-2 text-xs text-amber-300">{rateError}</p> : null}
+            </div>
+            <h2 className="mt-6 text-xl font-semibold text-white">Transaction</h2>
             {!lastTransfer ? (
               <p className="mt-3 text-sm text-zinc-400">No transfer yet. Send one to see details.</p>
             ) : (
