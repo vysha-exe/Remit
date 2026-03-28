@@ -53,6 +53,7 @@ This is **not** a licensed money transmitter, card processor, or production secu
 ```
 frontend/     Next.js UI (send, cashout, track link)
 backend/      Express API, env-driven integrations
+contracts/    ProximityStable.sol (TRON Nile test token; compile/deploy from backend/)
 ```
 
 ---
@@ -98,10 +99,31 @@ See **`backend/.env.example`** for the full list. Highlights:
 |----------|------|
 | `MONGODB_URI` | Persistent transfers and **user accounts** (required for sign up) |
 | `JWT_SECRET`, `JWT_EXPIRES_IN` | Signed sessions for `/api/auth/*` (set a strong secret in production) |
-| `TRON_FULL_HOST`, `TRON_PRIVATE_KEY`, `TRON_RECEIVER_ADDRESS` | Real Nile micro-tx hash (optional) |
+| `TRON_FULL_HOST`, `TRON_PRIVATE_KEY`, `TRON_RECEIVER_ADDRESS` | Real Nile settlement: 1 SUN TRX, or optional TRC-20 mint/transfer |
+| `TRON_STABLE_CONTRACT`, `TRON_STABLE_USE_MINT`, `TRON_STABLE_TRANSFER_AMOUNT` | Optional: **ProximityStable** `mint()` (see below) or TRC-20 `transfer` of test USDT (fund sender wallet) |
 | `COINBASE_ENABLED` / `COINBASE_STRICT` | Use Coinbase **public** FX on send |
 | `COINBASE_ADVANCED_TRADE_ENABLED`, `COINBASE_CDP_*` | Brokerage JWT + market buy endpoint |
 | `PAYOUT_US_UK_MODE` (or `PAYOUT_UK_US_MODE`), `WISE_API_TOKEN`, … | Wise **sandbox** cashout instead of timer demo |
+
+### ProximityStable (Nile test token)
+
+The repo includes a minimal **mintable** TRC-20–style contract (`contracts/ProximityStable.sol`). To deploy on **Nile** and wire settlement to **mint** new tokens to `TRON_RECEIVER_ADDRESS`:
+
+1. Fund the Nile account for `TRON_PRIVATE_KEY` with test TRX (e.g. [Nile faucet](https://nileex.io/join/getJoinPage)).
+2. From **`backend/`**: `npm install` then `npm run compile:contract` then `npm run deploy:stable`.
+3. Set **`TRON_STABLE_CONTRACT`** to the printed base58 address, **`TRON_STABLE_USE_MINT=true`**, and keep **`TRON_STABLE_TRANSFER_AMOUNT`** in smallest units (6 decimals: `1000` = 0.001 pUSD).
+
+The deployer is the **only minter**; the backend must use the same key as `TRON_PRIVATE_KEY`. Omit `TRON_STABLE_USE_MINT` or set it to `false` to use **transfer** from an existing token balance instead.
+
+---
+
+## Hackathon demo tips
+
+1. **Pick one hero path** (e.g. send + live rate + real Nile hash *or* US→UK + Wise sandbox). Showing everything often runs out of time.
+2. **Rehearse offline**: confirm backend starts, frontend hits the right port, and Mongo/TRON/Wise/Coinbase are either working or intentionally off with a one-line explanation.
+3. **Say the scope**: demo / MVP; real product would need compliance, fraud, KYC, and partner contracts.
+
+---
 
 ## License / credits
 

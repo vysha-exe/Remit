@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "compile:contract": "node scripts/compile-proximity-stable.mjs",
+    "deploy:stable": "node scripts/deploy-proximity-stable.mjs"
   },
   "dependencies": {
     "@coinbase/cdp-sdk": "^1.45.0",
@@ -16,5 +18,8 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^8.5.1",
     "tronweb": "^6.0.0"
+  },
+  "devDependencies": {
+    "solc": "^0.8.26"
   }
 }

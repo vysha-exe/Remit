@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 
 type Transfer = {
   id: string;
@@ -25,25 +25,42 @@ export default function TrackPage() {
   const [error, setError] = useState("");
   const [transfer, setTransfer] = useState<Transfer | null>(null);
 
+  const lookup = useCallback(
+    async (hash: string) => {
+      const h = hash.trim();
+      if (!h) return;
+      setLoading(true);
+      setError("");
+      setTransfer(null);
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/transfers/${encodeURIComponent(h)}`);
+        const data = (await response.json()) as { transfer?: Transfer; message?: string };
+        if (!response.ok || !data.transfer) {
+          setError(data.message || "Transfer not found. Check the transaction hash and try again.");
+          return;
+        }
+        setTransfer(data.transfer);
+      } catch {
+        setError("Unable to track transfer right now. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const q = new URLSearchParams(window.location.search).get("tx");
+    if (q) {
+      setTxHash(q);
+      void lookup(q);
+    }
+  }, [lookup]);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setLoading(true);
-    setError("");
-    setTransfer(null);
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/transfers/${encodeURIComponent(txHash.trim())}`);
-      const data = (await response.json()) as { transfer?: Transfer; message?: string };
-      if (!response.ok || !data.transfer) {
-        setError(data.message || "Transfer not found. Check the transaction hash and try again.");
-        return;
-      }
-      setTransfer(data.transfer);
-    } catch {
-      setError("Unable to track transfer right now. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+    await lookup(txHash);
   }
 
   return (
@@ -57,7 +74,8 @@ export default function TrackPage() {
             </Link>
           </div>
           <p className="mt-2 text-sm text-zinc-400">
-            Enter a transaction hash to view transfer status and delivery details.
+            Use the hash from your payment receipt (Payments page after Send). TRON Nile ids work here too when
+            on-chain settlement is enabled.
           </p>
 
           <form className="mt-6 space-y-3" onSubmit={handleSubmit}>
@@ -65,7 +83,7 @@ export default function TrackPage() {
               type="text"
               value={txHash}
               onChange={(e) => setTxHash(e.target.value)}
-              placeholder="0xabc123..."
+              placeholder="Paste hash from receipt or TRON tx id"
               className="w-full rounded-xl border border-zinc-600 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none focus:border-orange-500"
               required
             />

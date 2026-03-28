@@ -24,6 +24,7 @@ import {
 } from "./payoutWiseSandbox.js";
 import { chatCompletion } from "./chatAssistant.js";
 import { attachUserAuthRoutes } from "./userAuth.js";
+import { executeChainSettlement } from "./tronSettlement.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -161,7 +162,13 @@ const transferSchema = new mongoose.Schema(
       type: String,
       enum: ["Pending", "Confirmed", "Completed", "Failed"],
       default: "Pending"
-    }
+    },
+    chainSettlement: {
+      type: String,
+      enum: ["trc20_mint", "trc20_stable", "trx_sun", "simulated"],
+      default: "simulated"
+    },
+    chainNote: { type: String, default: "" }
   },
   { timestamps: true }
 );
@@ -258,28 +265,6 @@ async function connectDb() {
       : "";
     const msg = [error.message, hint].filter(Boolean).join(" ");
     console.warn("MongoDB unavailable. Using in-memory store.", msg);
-  }
-}
-
-function buildMockTxHash() {
-  return `0x${crypto.randomBytes(32).toString("hex")}`;
-}
-
-async function tryRealOrMockTronTransfer() {
-  // Optional real transfer mode for demos. If keys are missing or invalid, fallback to realistic hash.
-  if (!process.env.TRON_RECEIVER_ADDRESS || !tron) {
-    return { txHash: buildMockTxHash(), isReal: false };
-  }
-
-  try {
-    const tx = await tron.trx.sendTransaction(
-      process.env.TRON_RECEIVER_ADDRESS,
-      1 // 1 SUN for proof-of-chain action in demo mode
-    );
-    if (tx?.txid) return { txHash: tx.txid, isReal: true };
-    return { txHash: buildMockTxHash(), isReal: false };
-  } catch {
-    return { txHash: buildMockTxHash(), isReal: false };
   }
 }
 
@@ -783,7 +768,7 @@ app.post("/api/send", async (req, res) => {
       }
     }
     const destinationAmount = Math.round(usdcAmount * exchangeRate);
-    const { txHash } = await tryRealOrMockTronTransfer();
+    const { txHash, chainSettlement, chainNote } = await executeChainSettlement(tron);
 
     const transfer = await saveTransfer({
       senderName,
@@ -802,6 +787,8 @@ app.post("/api/send", async (req, res) => {
       bybitAdId,
       bybitMerchant,
       txHash,
+      chainSettlement,
+      chainNote,
       feeUsd: 0,
       source: "US Sender",
       estimatedCompletionMinutes: 10,
@@ -813,9 +800,12 @@ app.post("/api/send", async (req, res) => {
 
     return res.status(201).json(transfer);
   } catch (error) {
+    const detail = error?.message || String(error);
+    console.error("[api/send]", detail);
     return res.status(500).json({
-      message: "Transaction failed. Please retry or check wallet balance.",
-      detail: error.message
+      message:
+        "Could not complete this transfer. Check the detail below — it is often FX rates or the database, not your TRON wallet.",
+      detail
     });
   }
 });
@@ -825,17 +815,34 @@ app.get("/api/transfers", async (_, res) => {
   res.json({ transfers });
 });
 
+/** 64-hex chain tx ids may be stored with or without `0x`; path segments often omit the prefix. */
+function txHashCanonicalHex(raw) {
+  const s = String(raw || "").trim();
+  const hex = s.replace(/^0x/i, "");
+  if (/^[0-9a-fA-F]{64}$/.test(hex)) return hex.toLowerCase();
+  return "";
+}
+
 app.get("/api/transfers/:txHash", async (req, res) => {
   const txHash = String(req.params.txHash || "").trim();
   if (!txHash) return res.status(400).json({ message: "Transaction hash is required." });
 
+  const canonical = txHashCanonicalHex(txHash);
+  const mongoQuery =
+    canonical !== ""
+      ? { txHash: { $in: [`0x${canonical}`, canonical] } }
+      : { txHash };
+
   if (hasDatabase) {
-    const doc = await Transfer.findOne({ txHash }).lean();
+    const doc = await Transfer.findOne(mongoQuery).lean();
     if (!doc) return res.status(404).json({ message: "Transfer not found." });
     return res.json({ transfer: { id: doc._id.toString(), ...doc } });
   }
 
-  const item = inMemoryTransfers.find((transfer) => transfer.txHash === txHash);
+  const item = inMemoryTransfers.find((transfer) => {
+    if (canonical) return txHashCanonicalHex(transfer.txHash) === canonical;
+    return transfer.txHash === txHash;
+  });
   if (!item) return res.status(404).json({ message: "Transfer not found." });
   return res.json({ transfer: item });
 });

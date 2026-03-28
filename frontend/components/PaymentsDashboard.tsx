@@ -19,6 +19,8 @@ type SendResponse = {
   exchangeRate: number;
   status: "Pending" | "Confirmed" | "Completed" | "Failed";
   txHash: string;
+  chainSettlement?: "trc20_mint" | "trc20_stable" | "trx_sun" | "simulated";
+  chainNote?: string;
   estimatedCompletionMinutes: number;
   createdAt: string;
   source: string;
@@ -188,7 +190,7 @@ function formatUkSortCode(value: string) {
 }
 
 export default function PaymentsDashboard() {
-  const [amount, setAmount] = useState("100");
+  const [amount, setAmount] = useState("");
   const [senderName, setSenderName] = useState("");
   const [recipientName, setRecipientName] = useState("");
   const [recipientBankName, setRecipientBankName] = useState("");
@@ -211,6 +213,7 @@ export default function PaymentsDashboard() {
   const [history, setHistory] = useState<SendResponse[]>([]);
   const countryRef = useRef<HTMLDivElement | null>(null);
   const bankRef = useRef<HTMLDivElement | null>(null);
+  const paymentReceiptRef = useRef<HTMLDivElement | null>(null);
   const trackedUsUkPayoutId = useRef<string | null>(null);
 
   const [usUkSenderName, setUsUkSenderName] = useState("");
@@ -220,7 +223,7 @@ export default function PaymentsDashboard() {
   const [usUkRecipientName, setUsUkRecipientName] = useState("");
   const [usUkSortCode, setUsUkSortCode] = useState("");
   const [usUkAccountNumber, setUsUkAccountNumber] = useState("");
-  const [usUkAmountUsd, setUsUkAmountUsd] = useState("500");
+  const [usUkAmountUsd, setUsUkAmountUsd] = useState("");
   const [usUkAddressLine, setUsUkAddressLine] = useState("");
   const [usUkCity, setUsUkCity] = useState("");
   const [usUkState, setUsUkState] = useState("");
@@ -234,7 +237,7 @@ export default function PaymentsDashboard() {
 
   const receivePreview = useMemo(() => {
     const n = Number(amount);
-    if (Number.isNaN(n) || n <= 0) return "0";
+    if (Number.isNaN(n) || n <= 0) return "—";
     return Math.round(n * (fxRate?.usdToDestinationRate || 0)).toLocaleString();
   }, [amount, fxRate?.usdToDestinationRate]);
   const filteredCountries = useMemo(() => {
@@ -347,6 +350,12 @@ export default function PaymentsDashboard() {
   }, [paymentsTab, loadUsUkPayouts]);
 
   useEffect(() => {
+    if (lastTransfer && paymentReceiptRef.current) {
+      paymentReceiptRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [lastTransfer]);
+
+  useEffect(() => {
     let active = true;
     if (!destinationCode) {
       setFxRate(null);
@@ -436,12 +445,18 @@ export default function PaymentsDashboard() {
         setLoading(false);
         return;
       }
+      const amountNum = Number(amount);
+      if (!Number.isFinite(amountNum) || amountNum <= 0) {
+        setError("Enter a valid amount in USD.");
+        setLoading(false);
+        return;
+      }
 
       const response = await fetch(`${API_BASE_URL}/api/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          amountUsd: Number(amount),
+          amountUsd: amountNum,
           senderName,
           recipientName,
           recipientBankName: matchedBank,
@@ -452,17 +467,24 @@ export default function PaymentsDashboard() {
         })
       });
 
-      const data = (await response.json()) as SendResponse | { message: string };
-      if (!response.ok) {
+      let data: SendResponse | { message: string; detail?: string };
+      try {
+        data = (await response.json()) as SendResponse | { message: string; detail?: string };
+      } catch {
         setError(
-          "message" in data
-            ? data.message
-            : "Transaction failed. Please retry or check wallet balance."
+          `Could not read server response (HTTP ${response.status}). Is the backend running at ${API_BASE_URL}?`
         );
+        return;
+      }
+      if (!response.ok) {
+        const err = data as { message?: string; detail?: string };
+        const parts = [err.message, err.detail].filter(Boolean);
+        setError(parts.length ? parts.join(" — ") : "Request failed.");
         return;
       }
 
       setLastTransfer(data as SendResponse);
+      setAmount("");
       setSenderName("");
       setRecipientName("");
       setRecipientBankName("");
@@ -475,8 +497,12 @@ export default function PaymentsDashboard() {
       setCountryInput("");
       setDestinationCode("");
       await loadHistory();
-    } catch {
-      setError("Transaction failed. Please retry or check wallet balance.");
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? `${e.message} (network or CORS — check NEXT_PUBLIC_API_URL matches your backend.)`
+          : "Network error — check that the backend is running and the API URL is correct."
+      );
     } finally {
       setLoading(false);
     }
@@ -486,6 +512,12 @@ export default function PaymentsDashboard() {
     event.preventDefault();
     setPayoutLoading(true);
     setPayoutError("");
+    const amountNum = Number(usUkAmountUsd);
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
+      setPayoutError("Enter a valid USD amount.");
+      setPayoutLoading(false);
+      return;
+    }
     try {
       const response = await fetch(`${API_BASE_URL}/api/payouts/us-to-uk`, {
         method: "POST",
@@ -498,7 +530,7 @@ export default function PaymentsDashboard() {
           recipientName: usUkRecipientName,
           ukSortCode: usUkSortCode,
           ukAccountNumber: usUkAccountNumber,
-          amountUsd: Number(usUkAmountUsd),
+          amountUsd: amountNum,
           usAddressLine: usUkAddressLine || undefined,
           usCity: usUkCity || undefined,
           usState: usUkState || undefined,
@@ -521,7 +553,7 @@ export default function PaymentsDashboard() {
       setUsUkRecipientName("");
       setUsUkSortCode("");
       setUsUkAccountNumber("");
-      setUsUkAmountUsd("500");
+      setUsUkAmountUsd("");
       setUsUkAddressLine("");
       setUsUkCity("");
       setUsUkState("");
@@ -598,6 +630,8 @@ export default function PaymentsDashboard() {
                 <span className="mb-1 block text-sm font-medium text-zinc-300">Sender name</span>
                 <input
                   type="text"
+                  name="remit-sender-name"
+                  autoComplete="name"
                   value={senderName}
                   onChange={(e) => setSenderName(e.target.value)}
                   className="w-full rounded-xl border border-zinc-600 bg-zinc-950 px-4 py-2.5 text-white outline-none focus:border-orange-500"
@@ -610,12 +644,15 @@ export default function PaymentsDashboard() {
                 <span className="mb-1 block text-sm font-medium text-zinc-300">Amount (USD)</span>
                 <input
                   type="number"
+                  name="remit-amount-usd"
+                  autoComplete="off"
                   min={1}
                   step="1"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   className="w-full rounded-xl border border-zinc-600 bg-zinc-950 px-4 py-2.5 text-white outline-none focus:border-orange-500"
-                  placeholder="100"
+                  placeholder="Amount in USD"
+                  required
                 />
               </label>
 
@@ -726,6 +763,8 @@ export default function PaymentsDashboard() {
                 <div className="space-y-3">
                   <input
                     type="text"
+                    name="remit-recipient-cc-name"
+                    autoComplete="cc-name"
                     value={recipientCardholderName}
                     onChange={(e) => setRecipientCardholderName(e.target.value)}
                     className="w-full rounded-xl border border-zinc-600 bg-zinc-900 px-4 py-2.5 text-white outline-none focus:border-orange-500"
@@ -734,7 +773,9 @@ export default function PaymentsDashboard() {
                   />
                   <input
                     type="text"
+                    name="remit-recipient-cc-number"
                     inputMode="numeric"
+                    autoComplete="cc-number"
                     pattern="[0-9 ]*"
                     value={recipientCardNumber}
                     onChange={(e) => setRecipientCardNumber(formatCardNumber(e.target.value))}
@@ -745,6 +786,9 @@ export default function PaymentsDashboard() {
                   <div className="grid grid-cols-2 gap-3">
                     <input
                       type="text"
+                      name="remit-recipient-cc-exp"
+                      inputMode="numeric"
+                      autoComplete="cc-exp"
                       value={recipientCardExpiry}
                       onChange={(e) => setRecipientCardExpiry(e.target.value)}
                       className="w-full rounded-xl border border-zinc-600 bg-zinc-900 px-4 py-2.5 text-white outline-none focus:border-orange-500"
@@ -752,9 +796,15 @@ export default function PaymentsDashboard() {
                       required
                     />
                     <input
-                      type="password"
+                      type="text"
+                      name="remit-recipient-cc-csc"
+                      inputMode="numeric"
+                      autoComplete="cc-csc"
+                      maxLength={4}
                       value={recipientCardCvv}
-                      onChange={(e) => setRecipientCardCvv(e.target.value)}
+                      onChange={(e) =>
+                        setRecipientCardCvv(e.target.value.replace(/\D/g, "").slice(0, 4))
+                      }
                       className="w-full rounded-xl border border-zinc-600 bg-zinc-900 px-4 py-2.5 text-white outline-none focus:border-orange-500"
                       placeholder="CVV"
                       required
@@ -789,7 +839,10 @@ export default function PaymentsDashboard() {
             ) : null}
           </section>
 
-          <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-sm">
+          <section
+            ref={paymentReceiptRef}
+            className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-sm"
+          >
             <div className="rounded-xl border border-orange-500/40 bg-orange-500/10 p-4 text-sm text-orange-100">
               <p className="text-sm font-medium text-orange-200">Estimated receive</p>
               <p className="mt-2 text-base font-semibold text-white">
@@ -802,9 +855,76 @@ export default function PaymentsDashboard() {
             </div>
             <h2 className="mt-6 text-xl font-semibold text-white">Transaction</h2>
             {!lastTransfer ? (
-              <p className="mt-3 text-sm text-zinc-400">No transfer yet. Send one to see details.</p>
+              <p className="mt-3 text-sm text-zinc-400">
+                No transfer yet. After you send, your <strong className="text-zinc-200">tracking hash</strong> appears
+                here — copy it to open <Link href="/track" className="text-orange-300 underline hover:text-orange-200">Track</Link>.
+              </p>
             ) : (
               <div className="mt-4 space-y-3 text-sm">
+                {(() => {
+                  const onChain =
+                    lastTransfer.chainSettlement === "trc20_mint" ||
+                    lastTransfer.chainSettlement === "trc20_stable" ||
+                    lastTransfer.chainSettlement === "trx_sun";
+                  return (
+                <div
+                  className={`rounded-xl border p-4 ${
+                    onChain
+                      ? "border-emerald-500/40 bg-emerald-500/5"
+                      : "border-amber-500/40 bg-amber-500/5"
+                  }`}
+                >
+                  <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Track this payment</p>
+                  <p className="mt-1 break-all font-mono text-sm text-white">{lastTransfer.txHash}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(lastTransfer.txHash);
+                      }}
+                      className="rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-zinc-950 hover:bg-orange-400"
+                    >
+                      Copy hash
+                    </button>
+                    <Link
+                      href={`/track?tx=${encodeURIComponent(lastTransfer.txHash)}`}
+                      className="rounded-lg border border-zinc-600 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-zinc-800"
+                    >
+                      Open Track
+                    </Link>
+                    {onChain && (
+                      <a
+                        href={`https://nile.tronscan.org/#/transaction/${lastTransfer.txHash.replace(/^0x/i, "")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-lg border border-emerald-600/50 px-3 py-1.5 text-xs font-medium text-emerald-200 hover:bg-emerald-950/50"
+                      >
+                        View on Tronscan (Nile)
+                      </a>
+                    )}
+                  </div>
+                  {!onChain ? (
+                    <p className="mt-2 text-xs text-amber-200/90">
+                      This id is for in-app tracking only (not on TRON). Set{" "}
+                      <code className="text-zinc-300">TRON_PRIVATE_KEY</code> +{" "}
+                      <code className="text-zinc-300">TRON_RECEIVER_ADDRESS</code> in the backend for a real Nile tx; add{" "}
+                      <code className="text-zinc-300">TRON_STABLE_CONTRACT</code> (+ optional{" "}
+                      <code className="text-zinc-300">TRON_STABLE_USE_MINT=true</code> for ProximityStable mint).
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-xs text-emerald-200/80">
+                      On-chain:{" "}
+                      {lastTransfer.chainSettlement === "trc20_mint"
+                        ? "TRC-20 mint (test stablecoin)"
+                        : lastTransfer.chainSettlement === "trc20_stable"
+                          ? "TRC-20 stablecoin transfer"
+                          : "1 SUN TRX"}{" "}
+                      · {lastTransfer.chainNote || ""}
+                    </p>
+                  )}
+                </div>
+                  );
+                })()}
                 <Info label="Sent" value={`$${lastTransfer.usdAmount.toFixed(2)}`} />
                 <Info
                   label="Received"
@@ -817,7 +937,6 @@ export default function PaymentsDashboard() {
                 <Info label="Time" value={`~${lastTransfer.estimatedCompletionMinutes} minutes`} />
                 <Info label="Fee" value={`$${lastTransfer.feeUsd.toFixed(2)}`} />
                 <Info label="Status" value={lastTransfer.status} />
-                <Info label="TX Hash" value={lastTransfer.txHash} mono />
                 <StatusTimeline status={lastTransfer.status} />
               </div>
             )}

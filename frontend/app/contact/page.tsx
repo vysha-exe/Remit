@@ -11,7 +11,7 @@ export default function ContactPage() {
     {
       role: "assistant",
       content:
-        "Hi — I’m **Remit Assist**. Ask me about sending money, tracking a transfer, US→UK cashout, fees, or optional TRON / MongoDB / Coinbase / Wise setup."
+        "Hi — I’m **Remit Assist**. Ask about sending money, tracking a transfer, US→UK bank cashout, fees, or configuring TRON, MongoDB, Coinbase, or Wise."
     }
   ]);
   const [input, setInput] = useState("");
@@ -68,20 +68,20 @@ export default function ContactPage() {
           <div>
             <h1 className="text-2xl font-semibold text-white">Contact us</h1>
             <p className="mt-2 text-sm text-zinc-400">
-              This is a demo. For hackathon questions, use the assistant — it knows how Remit’s flows work. For real
-              production support you’d plug in email, ticketing, or Intercom here.
+              Use the assistant for product questions — it follows how Remit’s payments, tracking, and cashout flows work.
+              For account-specific or billing issues, you can add email or support tooling alongside this page later.
             </p>
             <ul className="mt-6 space-y-3 text-sm text-zinc-300">
               <li>
-                <span className="font-medium text-orange-300">Product</span> — Payments, Track, UK→US cashout
+                <span className="font-medium text-orange-300">Product</span> — Payments, Track, US→UK bank cashout
               </li>
               <li>
-                <span className="font-medium text-orange-300">Accounts</span> — Sign up stores a demo profile in your
-                browser only
+                <span className="font-medium text-orange-300">Accounts</span> — Sign in links your session when the API
+                and database are configured
               </li>
               <li>
-                <span className="font-medium text-orange-300">AI</span> — Optional OpenAI on the server; works without it
-                using rule-based help
+                <span className="font-medium text-orange-300">Assistant</span> — Powered by OpenAI when the server
+                has an API key; otherwise short rule-based answers
               </li>
             </ul>
           </div>
@@ -89,7 +89,7 @@ export default function ContactPage() {
           <div className="flex flex-col rounded-2xl border border-zinc-800 bg-zinc-900 shadow-inner">
             <div className="border-b border-zinc-800 px-4 py-3">
               <p className="text-sm font-medium text-white">Transaction assistant</p>
-              <p className="text-xs text-zinc-500">Ask about transfers, tracking, sandboxes, and setup</p>
+              <p className="text-xs text-zinc-500">Transfers, tracking, cashout, and integration setup</p>
             </div>
             <div className="max-h-[min(420px,55vh)] flex-1 space-y-3 overflow-y-auto px-4 py-4">
               {messages.map((m, i) => (
@@ -114,8 +114,8 @@ export default function ContactPage() {
             </div>
             <form onSubmit={handleSubmit} className="border-t border-zinc-800 p-3">
               <p className="mb-2 text-[10px] text-zinc-500">
-                Without OpenAI, replies use keyword rules. Add <code className="text-zinc-400">OPENAI_API_KEY</code> to
-                the backend for GPT-powered answers.
+                With <code className="text-zinc-400">OPENAI_API_KEY</code> set on the server, replies use GPT; otherwise
+                you get concise rule-based answers.
               </p>
               {error ? <p className="mb-2 text-xs text-red-300">{error}</p> : null}
               <div className="flex gap-2">

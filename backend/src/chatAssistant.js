@@ -1,11 +1,11 @@
 /**
- * Transaction help assistant: OpenAI when OPENAI_API_KEY is set, else rule-based demo replies.
+ * Transaction help assistant: OpenAI when OPENAI_API_KEY is set, else rule-based fallback replies.
  */
 
 const SYSTEM_PROMPT = `You are Remit Assist, a concise helper for the Remit app.
-Topics: international send from US, FX preview, US→UK cashout (US bank + UK sort code), tracking by tx hash,
-optional TRON Nile testnet hash, optional MongoDB persistence, optional Coinbase rates or Advanced Trade, optional Wise sandbox.
-Never claim to move real money or guarantee compliance. Keep answers under 120 words unless the user asks for detail.`;
+Topics: international send from US, FX preview, US→UK cashout (US bank + UK sort code), tracking by transaction hash,
+optional TRON Nile testnet settlement hash, MongoDB persistence when configured, optional Coinbase rates or Advanced Trade, optional Wise sandbox.
+Never claim to move real money, guarantee settlement, or provide legal or compliance advice. Keep answers under 120 words unless the user asks for detail.`;
 
 export function fallbackTransactionReply(userMessage) {
   const q = String(userMessage || "").toLowerCase();
@@ -20,10 +20,10 @@ export function fallbackTransactionReply(userMessage) {
     return "Go to **Payments**: enter amount in USD, pick a **destination country** from search, choose a **bank** where we list institutions, add account and card fields, confirm, then submit. You’ll get a live FX estimate and a settlement hash.";
   }
   if (/uk|us|barclays|cashout|gbp|routing|ach/.test(q)) {
-    return "The **US → UK cashout** section debits a **US bank** (routing + account) and credits a **UK account** via sort code + account number. Default mode uses **demo timers**; with Wise env vars you can hit **Wise sandbox** APIs instead.";
+    return "The **US → UK cashout** section debits a **US bank** (routing + account) and credits a **UK account** via sort code + account number. By default the UI shows a **timed status progression**; with Wise env vars you can use **Wise sandbox** APIs instead.";
   }
   if (/tron|crypto|blockchain|nile|tx hash/.test(q)) {
-    return "The backend can record a **TRON Nile** micro-transfer hash when `TRON_PRIVATE_KEY` and `TRON_RECEIVER_ADDRESS` are set; otherwise you’ll see a **mock** hash. Fund the sender with **test TRX** from a Nile faucet.";
+    return "The backend can record a **TRON Nile** micro-transfer hash when `TRON_PRIVATE_KEY` and `TRON_RECEIVER_ADDRESS` are set; otherwise you’ll see an **in-app reference id** only. Fund the sender with **test TRX** from a Nile faucet.";
   }
   if (/mongo|database|save|persist/.test(q)) {
     return "Transfers save to **MongoDB** when `MONGODB_URI` works. If not, the server keeps **in-memory** history until restart.";
@@ -48,7 +48,7 @@ export async function chatCompletion(messages) {
     const text = last?.content || "";
     return {
       reply: fallbackTransactionReply(text),
-      source: "demo_rules"
+      source: "fallback_rules"
     };
   }
 
