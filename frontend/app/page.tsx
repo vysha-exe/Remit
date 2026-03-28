@@ -4,7 +4,7 @@ export default function HomePage() {
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="mx-auto max-w-6xl px-4 py-14 md:py-20">
-        <section className="rounded-3xl border border-orange-500/35 bg-gradient-to-br from-zinc-900 via-zinc-900 to-zinc-950 p-8 shadow-xl shadow-orange-500/10 md:p-12">
+        <section className="rounded-3xl border border-orange-500/35 bg-gradient-to-br from-zinc-900 via-zinc-900 to-zinc-950 p-8 shadow-none md:p-12">
           <p className="text-sm font-semibold uppercase tracking-wide text-orange-400">Remit</p>
           <h1 className="mt-3 text-4xl font-bold tracking-tight text-white md:text-5xl">
             Send farther<span className="text-orange-400">.</span> Pay nothing<span className="text-zinc-500">*</span>

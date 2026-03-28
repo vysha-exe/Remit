@@ -568,7 +568,7 @@ export default function PaymentsDashboard() {
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="mx-auto max-w-6xl px-4 py-10">
-        <section className="mb-8 rounded-3xl border border-orange-500/35 bg-gradient-to-r from-zinc-900 to-zinc-800 p-7 shadow-lg shadow-orange-500/20">
+        <section className="mb-8 rounded-3xl border border-orange-500/35 bg-gradient-to-r from-zinc-900 to-zinc-800 p-7 shadow-none">
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-sm font-semibold uppercase tracking-wide text-orange-400">Remit</p>
