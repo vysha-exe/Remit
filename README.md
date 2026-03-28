@@ -1,29 +1,61 @@
-# Remitless
+# Remit
 
-Slogan: **"Send farther, pay nothing."**
+**Tagline:** *Send farther, pay nothing.*
 
-A hackathon MVP for zero-fee remittance with a simple consumer UI and backend crypto rails simulation.
+Hackathon-style remittance demo: a consumer-facing **Next.js** UI with an **Express** backend, optional **MongoDB**, optional **TRON (Nile)** for a settlement hash, optional **Coinbase** (public FX and/or Advanced Trade), and optional **Wise sandbox** for a UK→US payout experiment.
 
-## Folder structure
+This is **not** a licensed money transmitter, card processor, or production security review. It *is* enough for a **clear live demo** if you rehearse one happy path and keep `.env` working on the demo machine.
 
-- `frontend` - Next.js + Tailwind app (normal, user-friendly send money interface)
-- `backend` - Express API for send flow, status updates, and transfer history
+---
 
-## MVP flow implemented
+## What the app does
 
-1. `Send Money` page takes `Amount (USD)` and `Recipient name`
-2. Frontend calls `POST /api/send`
-3. Backend simulates:
-   - USD -> USDC (1:1)
-   - USDC -> LKR via arbitrage rate
-   - blockchain settlement hash (real TRON if env keys exist, otherwise mock hash)
-4. Frontend shows:
-   - sent amount
-   - received LKR
-   - time (~10 mins)
-   - fee ($0)
-   - status + tx hash
-5. Optional dashboard section lists recent transfers
+### Send money (US → destination country)
+
+- Search **destination country**, enter **sender / recipient**, **bank** (curated lists for GB, CN, RU, FR, DE), **account number**, and **demo card** fields (card number is formatted in the UI; the API stores **last 4 only**; expiry/CVV are not sent to the server).
+- Live **FX preview** per country.
+- **Submit** runs `POST /api/send`: USD→destination fiat using **exchange rates** (Open ER API by default; **Coinbase public rates** or **Bybit P2P** if enabled), records a **tx hash** from **real Nile TRX** (1 SUN) when `TRON_*` is configured, otherwise a **mock** hash.
+- **Persists** to **MongoDB** when `MONGODB_URI` connects; otherwise **in-memory** (data lost on restart).
+- **Recent transfers** table and a short **status timeline** (timer-based progression for the demo).
+
+### Track a transfer
+
+- **`/track`** — look up by **transaction hash** (`GET /api/transfers/:txHash`).
+
+### UK → US bank cashout (Barclays as fixed UK source)
+
+- Home page section: **debit** labeled **Barclays (UK)** → **credit** US bank (routing + account + optional US address).
+- **Default:** local **demo rail** (timers + fake reference).
+- **Optional:** `PAYOUT_UK_US_MODE=wise_sandbox` + **Wise personal API token** → creates recipient, quote, and transfer on **`api.wise-sandbox.com`** (see `.env.example`).
+
+### Coinbase Advanced Trade (API only)
+
+- Not wired into the main send form. With CDP credentials and `COINBASE_ADVANCED_TRADE_ENABLED=true`:
+  - `GET /api/coinbase-advanced/accounts`
+  - `POST /api/coinbase-advanced/market-buy-usdc` with `{ "quoteSizeUsd": 5 }` (uses **real** brokerage balance; capped by env).
+
+---
+
+## Stack
+
+| Layer | Tech |
+|--------|------|
+| Frontend | Next.js (App Router), Tailwind, TypeScript |
+| Backend | Node.js, Express, Mongoose |
+| Chain (optional) | TRON Web, Nile testnet |
+| Payout sandbox (optional) | Wise Platform API (sandbox) |
+| Brokerage (optional) | Coinbase Developer Platform JWT → Advanced Trade REST |
+
+---
+
+## Project layout
+
+```
+frontend/     Next.js UI (send, cashout, track link)
+backend/      Express API, env-driven integrations
+```
+
+---
 
 ## Run locally
 
@@ -35,7 +67,7 @@ npm install
 npm run dev
 ```
 
-Create `.env` from `.env.example` if needed.
+Copy **`backend/.env.example`** → **`backend/.env`** and fill values (never commit `.env`).
 
 ### Frontend
 
@@ -45,6 +77,39 @@ npm install
 npm run dev
 ```
 
-Optional API URL override:
+Default API target is `http://localhost:4000`. To override:
 
-`NEXT_PUBLIC_API_URL=http://localhost:4000`
+```bash
+# frontend/.env.local
+NEXT_PUBLIC_API_URL=http://localhost:4000
+```
+
+Open **http://localhost:3000** (or the port Next prints).
+
+---
+
+## Environment variables (summary)
+
+See **`backend/.env.example`** for the full list. Highlights:
+
+| Variable | Role |
+|----------|------|
+| `MONGODB_URI` | Persistent transfers (optional) |
+| `TRON_FULL_HOST`, `TRON_PRIVATE_KEY`, `TRON_RECEIVER_ADDRESS` | Real Nile micro-tx hash (optional) |
+| `COINBASE_ENABLED` / `COINBASE_STRICT` | Use Coinbase **public** FX on send |
+| `COINBASE_ADVANCED_TRADE_ENABLED`, `COINBASE_CDP_*` | Brokerage JWT + market buy endpoint |
+| `PAYOUT_UK_US_MODE`, `WISE_API_TOKEN`, … | Wise **sandbox** cashout instead of timer demo |
+
+---
+
+## Hackathon demo tips
+
+1. **Pick one hero path** (e.g. send + live rate + real Nile hash *or* UK→US + Wise sandbox). Showing everything often runs out of time.
+2. **Rehearse offline**: confirm backend starts, frontend hits the right port, and Mongo/TRON/Wise/Coinbase are either working or intentionally off with a one-line explanation.
+3. **Say the scope**: demo / MVP; real product would need compliance, fraud, KYC, and partner contracts.
+
+---
+
+## License / credits
+
+Built as a learning and demo project. Third-party APIs (Coinbase, Wise, TRON, etc.) are subject to their own terms.
