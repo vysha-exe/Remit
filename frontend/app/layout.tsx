@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { MainNav } from "../components/MainNav";
 
 export const metadata: Metadata = {
-  title: "Remit",
+  title: "REMIT",
   description: "Zero-fee remittance app powered by crypto rails in the backend."
 };
 

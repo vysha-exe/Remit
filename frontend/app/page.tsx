@@ -17,19 +17,19 @@ export default function HomePage() {
           <div className="mt-10 flex flex-wrap gap-3">
             <Link
               href="/payments"
-              className="inline-flex items-center rounded-xl bg-orange-500 px-6 py-3 font-semibold text-zinc-950 transition hover:bg-orange-400"
+              className="inline-flex items-center rounded-xl bg-orange-500 px-6 py-3 text-base font-semibold text-zinc-950 transition hover:bg-orange-400"
             >
               Make a payment
             </Link>
             <Link
               href="/signup"
-              className="inline-flex items-center rounded-xl border border-zinc-600 px-6 py-3 font-medium text-zinc-100 transition hover:border-orange-400 hover:text-orange-200"
+              className="inline-flex items-center rounded-xl border border-zinc-600 px-6 py-3 text-base font-medium text-zinc-100 transition hover:border-orange-400 hover:text-orange-200"
             >
               Create an account
             </Link>
             <Link
               href="/contact"
-              className="inline-flex items-center rounded-xl border border-zinc-700 px-6 py-3 text-sm text-zinc-300 transition hover:border-zinc-500"
+              className="inline-flex items-center rounded-xl border border-zinc-700 px-6 py-3 text-base font-medium text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
             >
               Contact &amp; help
             </Link>

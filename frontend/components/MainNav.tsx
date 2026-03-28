@@ -17,8 +17,23 @@ export function MainNav() {
   return (
     <header className="sticky top-0 z-50 border-b border-zinc-800/80 bg-zinc-950/95 backdrop-blur">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-        <Link href="/" className="text-lg font-semibold tracking-tight text-white">
-          Remit<span className="text-orange-400">.</span>
+        <Link
+          href="/"
+          className="flex items-center gap-3 text-[1.4625rem] font-semibold leading-none tracking-tight text-white"
+        >
+          <img
+            src="/logo.png"
+            alt=""
+            width={112}
+            height={112}
+            decoding="async"
+            fetchPriority="high"
+            className="h-[2.45rem] w-auto shrink-0 object-contain sm:h-[2.8rem]"
+            style={{ imageRendering: "auto" }}
+          />
+          <span>
+            REMIT<span className="text-orange-400">.</span>
+          </span>
         </Link>
         <nav className="flex flex-wrap items-center gap-1 sm:gap-2">
           {links.map(({ href, label }) => {
