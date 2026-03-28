@@ -1,13 +1,15 @@
 import crypto from "node:crypto";
 
 /**
- * UK → US payout via Wise **sandbox** (https://api.wise-sandbox.com).
+ * US → UK payout via Wise **sandbox** (https://api.wise-sandbox.com).
  * Requires a Personal API token from the Wise sandbox environment.
  * @see https://docs.wise.com/guides/developer/environments
  */
 
 export function isWiseSandboxPayoutEnabled() {
-  const mode = String(process.env.PAYOUT_UK_US_MODE || "").toLowerCase();
+  const mode = String(
+    process.env.PAYOUT_US_UK_MODE || process.env.PAYOUT_UK_US_MODE || ""
+  ).toLowerCase();
   return mode === "wise_sandbox" && Boolean(process.env.WISE_API_TOKEN?.trim());
 }
 
@@ -70,45 +72,35 @@ export async function wiseGetProfileId() {
   return (match || list[0]).id;
 }
 
+export async function wiseCreateUsdToGbpQuote(profileId, sourceAmountUsd, targetAccountId) {
+  return wiseRequest("POST", `/v3/profiles/${profileId}/quotes`, {
+    sourceCurrency: "USD",
+    targetCurrency: "GBP",
+    sourceAmount: Number(sourceAmountUsd),
+    targetAccount: targetAccountId
+  });
+}
+
 /**
- * @param {object} address
- * @param {string} address.line1
- * @param {string} address.city
- * @param {string} address.state 2-letter US state
- * @param {string} address.zip
+ * UK GBP recipient via sort code + account number.
  */
-export async function wiseCreateUsdRecipient(profileId, { accountHolderName, routing, accountNumber, address }) {
+export async function wiseCreateGbpSortCodeRecipient(profileId, { accountHolderName, sortCode, accountNumber }) {
+  const sc = String(sortCode || "").replace(/\D/g, "");
+  const an = String(accountNumber || "").replace(/\D/g, "");
   const payload = {
-    currency: "USD",
-    type: "aba",
+    currency: "GBP",
+    type: "sort_code",
     profile: profileId,
     accountHolderName,
     ownedByCustomer: false,
     details: {
       legalType: "PRIVATE",
-      abartn: routing,
-      accountNumber: String(accountNumber).replace(/\D/g, ""),
-      accountType: "CHECKING",
-      address: {
-        country: "US",
-        state: address.state,
-        city: address.city,
-        firstLine: address.line1,
-        postCode: address.zip
-      }
+      sortCode: sc,
+      accountNumber: an
     }
   };
 
   return wiseRequest("POST", "/v1/accounts", payload);
-}
-
-export async function wiseCreateGbpToUsdQuote(profileId, sourceAmountGbp, targetAccountId) {
-  return wiseRequest("POST", `/v3/profiles/${profileId}/quotes`, {
-    sourceCurrency: "GBP",
-    targetCurrency: "USD",
-    sourceAmount: Number(sourceAmountGbp),
-    targetAccount: targetAccountId
-  });
 }
 
 export async function wiseCreateTransfer(quoteUuid, targetAccountId, customerTransactionId) {
@@ -117,7 +109,7 @@ export async function wiseCreateTransfer(quoteUuid, targetAccountId, customerTra
     quoteUuid,
     customerTransactionId,
     details: {
-      reference: "Remit UK-US sandbox"
+      reference: "Remit US-UK sandbox"
     }
   });
 }
@@ -152,23 +144,21 @@ export function mapWiseTransferStatusToPayout(wiseStatus) {
 }
 
 /**
- * Creates recipient → quote (GBP→USD) → transfer on Wise sandbox.
- * @returns {Promise<{ wiseTransferId: number, wiseQuoteUuid: string, wiseStatus: string, estimatedUsdPayout: number }>}
+ * Creates UK GBP recipient → quote (USD→GBP) → transfer on Wise sandbox.
+ * @returns {Promise<{ wiseTransferId: number, wiseQuoteUuid: string, wiseStatus: string, estimatedGbpPayout: number }>}
  */
-export async function runWiseUkUsPayout({
-  recipientName,
-  routing,
-  accountNumber,
-  amountGbp,
-  address
+export async function runWiseUsUkPayout({
+  ukRecipientName,
+  ukSortCode,
+  ukAccountNumber,
+  amountUsd
 }) {
   const profileId = await wiseGetProfileId();
 
-  const recipient = await wiseCreateUsdRecipient(profileId, {
-    accountHolderName: recipientName,
-    routing,
-    accountNumber,
-    address
+  const recipient = await wiseCreateGbpSortCodeRecipient(profileId, {
+    accountHolderName: ukRecipientName,
+    sortCode: ukSortCode,
+    accountNumber: ukAccountNumber
   });
 
   const recipientId = recipient.id;
@@ -176,13 +166,13 @@ export async function runWiseUkUsPayout({
     throw new Error("Wise did not return a recipient id.");
   }
 
-  const quote = await wiseCreateGbpToUsdQuote(profileId, amountGbp, recipientId);
+  const quote = await wiseCreateUsdToGbpQuote(profileId, amountUsd, recipientId);
   const quoteUuid = quote.id;
   if (!quoteUuid) {
     throw new Error("Wise did not return a quote id.");
   }
 
-  const estimatedUsdPayout =
+  const estimatedGbpPayout =
     typeof quote.targetAmount === "number"
       ? quote.targetAmount
       : quote.paymentOptions?.find((o) => !o.disabled)?.targetAmount ?? 0;
@@ -193,6 +183,6 @@ export async function runWiseUkUsPayout({
     wiseTransferId: transfer.id,
     wiseQuoteUuid: quoteUuid,
     wiseStatus: transfer.status || "unknown",
-    estimatedUsdPayout: Math.round(Number(estimatedUsdPayout) * 100) / 100
+    estimatedGbpPayout: Math.round(Number(estimatedGbpPayout) * 100) / 100
   };
 }

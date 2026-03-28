@@ -12,17 +12,18 @@ import {
 import {
   CORRIDOR,
   SOURCE_BANK,
-  buildUsRecipientAddress,
-  getGbpToUsdRate,
-  parseUkUsPayoutBody,
-  shapePublicUkUsPayout
-} from "./payoutUkUs.js";
+  getUsdToGbpRate,
+  parseUsUkPayoutBody,
+  shapePublicUsUkPayout
+} from "./payoutUsUk.js";
 import {
   isWiseSandboxPayoutEnabled,
   mapWiseTransferStatusToPayout,
-  runWiseUkUsPayout,
+  runWiseUsUkPayout,
   wiseGetTransfer
 } from "./payoutWiseSandbox.js";
+import { chatCompletion } from "./chatAssistant.js";
+import { attachUserAuthRoutes } from "./userAuth.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -167,19 +168,19 @@ const transferSchema = new mongoose.Schema(
 
 const Transfer = mongoose.model("Transfer", transferSchema);
 
-const payoutUkUsSchema = new mongoose.Schema(
+const payoutUsUkSchema = new mongoose.Schema(
   {
     corridor: { type: String, default: CORRIDOR },
     sourceBank: { type: String, default: SOURCE_BANK },
     senderName: { type: String, required: true },
-    ukSortCodeLast2: { type: String, required: true },
-    ukAccountLast4: { type: String, required: true },
-    recipientName: { type: String, required: true },
-    usBankName: { type: String, required: true },
     usRoutingLast4: { type: String, required: true },
     usAccountLast4: { type: String, required: true },
-    amountGbp: { type: Number, required: true },
-    estimatedUsdPayout: { type: Number, required: true },
+    usBankName: { type: String, required: true },
+    recipientName: { type: String, required: true },
+    ukSortCodeLast2: { type: String, required: true },
+    ukAccountLast4: { type: String, required: true },
+    amountUsd: { type: Number, required: true },
+    estimatedGbpPayout: { type: Number, required: true },
     status: {
       type: String,
       enum: ["Submitted", "Processing", "Completed", "Failed"],
@@ -194,9 +195,9 @@ const payoutUkUsSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-const UkUsPayout = mongoose.model("UkUsPayout", payoutUkUsSchema);
+const UsUkPayout = mongoose.model("UsUkPayout", payoutUsUkSchema);
 const inMemoryTransfers = [];
-const inMemoryUkUsPayouts = [];
+const inMemoryUsUkPayouts = [];
 let hasDatabase = false;
 
 const RAW_PRIVATE_KEY = (process.env.TRON_PRIVATE_KEY || "").trim();
@@ -315,34 +316,34 @@ async function updateStatus(id, status) {
   if (item) item.status = status;
 }
 
-async function saveUkUsPayout(payoutData) {
+async function saveUsUkPayout(payoutData) {
   if (hasDatabase) {
-    const doc = await UkUsPayout.create(payoutData);
+    const doc = await UsUkPayout.create(payoutData);
     return { id: doc._id.toString(), ...doc.toObject() };
   }
   const id = crypto.randomUUID();
   const createdAt = new Date().toISOString();
   const entry = { id, createdAt, updatedAt: createdAt, ...payoutData };
-  inMemoryUkUsPayouts.unshift(entry);
+  inMemoryUsUkPayouts.unshift(entry);
   return entry;
 }
 
-async function listUkUsPayouts() {
+async function listUsUkPayouts() {
   if (hasDatabase) {
-    const docs = await UkUsPayout.find().sort({ createdAt: -1 }).limit(20).lean();
+    const docs = await UsUkPayout.find().sort({ createdAt: -1 }).limit(20).lean();
     return docs.map((doc) => ({ id: doc._id.toString(), ...doc }));
   }
-  return inMemoryUkUsPayouts.slice(0, 20);
+  return inMemoryUsUkPayouts.slice(0, 20);
 }
 
-async function updateUkUsPayoutStatus(id, status, providerRef) {
+async function updateUsUkPayoutStatus(id, status, providerRef) {
   if (hasDatabase) {
     const update = { status };
     if (providerRef) update.providerRef = providerRef;
-    await UkUsPayout.findByIdAndUpdate(id, update);
+    await UsUkPayout.findByIdAndUpdate(id, update);
     return;
   }
-  const item = inMemoryUkUsPayouts.find((p) => p.id === id);
+  const item = inMemoryUsUkPayouts.find((p) => p.id === id);
   if (item) {
     item.status = status;
     if (providerRef) item.providerRef = providerRef;
@@ -350,26 +351,26 @@ async function updateUkUsPayoutStatus(id, status, providerRef) {
   }
 }
 
-function scheduleUkUsDemoProgress(payoutId) {
+function scheduleUsUkDemoProgress(payoutId) {
   setTimeout(() => {
-    updateUkUsPayoutStatus(payoutId, "Processing", "").catch(() => {});
+    updateUsUkPayoutStatus(payoutId, "Processing", "").catch(() => {});
   }, 2500);
   setTimeout(() => {
-    const ref = `DEMO-FEDWIRE-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
-    updateUkUsPayoutStatus(payoutId, "Completed", ref).catch(() => {});
+    const ref = `DEMO-UK-CREDIT-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+    updateUsUkPayoutStatus(payoutId, "Completed", ref).catch(() => {});
   }, 6500);
 }
 
-async function updateUkUsPayoutWiseFields(payoutId, { status, wiseRawStatus, providerRef }) {
+async function updateUsUkPayoutWiseFields(payoutId, { status, wiseRawStatus, providerRef }) {
   if (hasDatabase) {
     const patch = {};
     if (status) patch.status = status;
     if (wiseRawStatus !== undefined) patch.wiseRawStatus = wiseRawStatus;
     if (providerRef) patch.providerRef = providerRef;
-    await UkUsPayout.findByIdAndUpdate(payoutId, patch);
+    await UsUkPayout.findByIdAndUpdate(payoutId, patch);
     return;
   }
-  const item = inMemoryUkUsPayouts.find((p) => p.id === payoutId);
+  const item = inMemoryUsUkPayouts.find((p) => p.id === payoutId);
   if (item) {
     if (status) item.status = status;
     if (wiseRawStatus !== undefined) item.wiseRawStatus = wiseRawStatus;
@@ -383,7 +384,7 @@ function scheduleWiseStatusPoll(payoutId, wiseTransferId) {
     try {
       const t = await wiseGetTransfer(wiseTransferId);
       const mapped = mapWiseTransferStatusToPayout(t.status);
-      await updateUkUsPayoutWiseFields(payoutId, {
+      await updateUsUkPayoutWiseFields(payoutId, {
         status: mapped,
         wiseRawStatus: t.status,
         providerRef: `wise-sandbox:${wiseTransferId}`
@@ -552,6 +553,29 @@ async function getBybitP2PQuote({ fiatCurrency, token = "USDT" }) {
 
 app.get("/api/health", (_, res) => {
   res.json({ ok: true });
+});
+
+app.post("/api/chat", async (req, res) => {
+  try {
+    const messages = req.body?.messages;
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ message: "messages array is required." });
+    }
+    const last = messages[messages.length - 1];
+    if (last?.role !== "user" || typeof last?.content !== "string") {
+      return res.status(400).json({ message: "Last message must be a user string." });
+    }
+    if (messages.length > 30) {
+      return res.status(400).json({ message: "Too many messages in one request." });
+    }
+    const out = await chatCompletion(messages);
+    return res.json(out);
+  } catch (error) {
+    return res.status(500).json({
+      message: error.message || "Chat failed.",
+      source: "error"
+    });
+  }
 });
 
 app.get("/api/countries", (_, res) => {
@@ -816,12 +840,12 @@ app.get("/api/transfers/:txHash", async (req, res) => {
   return res.json({ transfer: item });
 });
 
-/** UK → US bank cashout: source bank hardcoded to Barclays (demo rail). */
-app.post("/api/payouts/uk-to-us", async (req, res) => {
+/** US → UK bank cashout: US source (ACH-style demo) → UK sort code / account (demo rail). */
+app.post("/api/payouts/us-to-uk", async (req, res) => {
   try {
-    const parsed = parseUkUsPayoutBody(req.body);
-    const gbpToUsd = await getGbpToUsdRate();
-    let estimatedUsdPayout = Math.round(parsed.amountGbp * gbpToUsd * 100) / 100;
+    const parsed = parseUsUkPayoutBody(req.body);
+    const usdToGbp = await getUsdToGbpRate();
+    let estimatedGbpPayout = Math.round(parsed.amountUsd * usdToGbp * 100) / 100;
 
     const useWise = isWiseSandboxPayoutEnabled();
     let payoutMode = "demo";
@@ -832,39 +856,37 @@ app.post("/api/payouts/uk-to-us", async (req, res) => {
     let initialStatus = "Submitted";
 
     if (useWise) {
-      const routing = String(req.body?.usRoutingNumber || "").replace(/\D/g, "");
-      const accountNumber = String(req.body?.usAccountNumber || "").replace(/\D/g, "");
-      const address = buildUsRecipientAddress(req.body);
-      const wiseResult = await runWiseUkUsPayout({
-        recipientName: parsed.recipientName,
-        routing,
-        accountNumber,
-        amountGbp: parsed.amountGbp,
-        address
+      const ukSortCode = String(req.body?.ukSortCode || "").replace(/\D/g, "");
+      const ukAccountNumber = String(req.body?.ukAccountNumber || "").replace(/\D/g, "");
+      const wiseResult = await runWiseUsUkPayout({
+        ukRecipientName: parsed.recipientName,
+        ukSortCode,
+        ukAccountNumber,
+        amountUsd: parsed.amountUsd
       });
       payoutMode = "wise_sandbox";
       wiseTransferId = String(wiseResult.wiseTransferId);
       wiseQuoteUuid = wiseResult.wiseQuoteUuid;
       wiseRawStatus = wiseResult.wiseStatus;
       providerRef = `wise-sandbox:${wiseTransferId}`;
-      if (wiseResult.estimatedUsdPayout > 0) {
-        estimatedUsdPayout = wiseResult.estimatedUsdPayout;
+      if (wiseResult.estimatedGbpPayout > 0) {
+        estimatedGbpPayout = wiseResult.estimatedGbpPayout;
       }
       initialStatus = mapWiseTransferStatusToPayout(wiseResult.wiseStatus);
     }
 
-    const payout = await saveUkUsPayout({
+    const payout = await saveUsUkPayout({
       corridor: CORRIDOR,
       sourceBank: SOURCE_BANK,
       senderName: parsed.senderName,
-      ukSortCodeLast2: parsed.ukSortCodeLast2,
-      ukAccountLast4: parsed.ukAccountLast4,
-      recipientName: parsed.recipientName,
-      usBankName: parsed.usBankName,
       usRoutingLast4: parsed.usRoutingLast4,
       usAccountLast4: parsed.usAccountLast4,
-      amountGbp: parsed.amountGbp,
-      estimatedUsdPayout,
+      usBankName: parsed.usBankName,
+      recipientName: parsed.recipientName,
+      ukSortCodeLast2: parsed.ukSortCodeLast2,
+      ukAccountLast4: parsed.ukAccountLast4,
+      amountUsd: parsed.amountUsd,
+      estimatedGbpPayout,
       status: initialStatus,
       providerRef,
       payoutMode,
@@ -876,10 +898,10 @@ app.post("/api/payouts/uk-to-us", async (req, res) => {
     if (useWise) {
       scheduleWiseStatusPoll(payout.id, wiseTransferId);
     } else {
-      scheduleUkUsDemoProgress(payout.id);
+      scheduleUsUkDemoProgress(payout.id);
     }
 
-    return res.status(201).json(shapePublicUkUsPayout(payout));
+    return res.status(201).json(shapePublicUsUkPayout(payout));
   } catch (error) {
     const message = error.message || "Payout request failed.";
     const isValidation =
@@ -895,7 +917,7 @@ app.post("/api/payouts/uk-to-us", async (req, res) => {
   }
 });
 
-app.get("/api/payouts/uk-to-us/config", (_, res) => {
+app.get("/api/payouts/us-to-uk/config", (_, res) => {
   res.json({
     corridor: CORRIDOR,
     sourceBank: SOURCE_BANK,
@@ -907,14 +929,16 @@ app.get("/api/payouts/uk-to-us/config", (_, res) => {
   });
 });
 
-app.get("/api/payouts/uk-to-us", async (_, res) => {
+app.get("/api/payouts/us-to-uk", async (_, res) => {
   try {
-    const rows = await listUkUsPayouts();
-    return res.json({ payouts: rows.map(shapePublicUkUsPayout) });
+    const rows = await listUsUkPayouts();
+    return res.json({ payouts: rows.map(shapePublicUsUkPayout) });
   } catch (error) {
     return res.status(500).json({ message: error.message || "Unable to list payouts." });
   }
 });
+
+attachUserAuthRoutes(app, { isDatabaseConnected: () => hasDatabase });
 
 connectDb().finally(() => {
   app.listen(PORT, () => {

@@ -2,7 +2,7 @@
 
 **Tagline:** *Send farther, pay nothing.*
 
-Hackathon-style remittance demo: a consumer-facing **Next.js** UI with an **Express** backend, optional **MongoDB**, optional **TRON (Nile)** for a settlement hash, optional **Coinbase** (public FX and/or Advanced Trade), and optional **Wise sandbox** for a UK→US payout experiment.
+Hackathon-style remittance demo: a consumer-facing **Next.js** UI with an **Express** backend, optional **MongoDB**, optional **TRON (Nile)** for a settlement hash, optional **Coinbase** (public FX and/or Advanced Trade), and optional **Wise sandbox** for a US→UK payout experiment.
 
 This is **not** a licensed money transmitter, card processor, or production security review. It *is* enough for a **clear live demo** if you rehearse one happy path and keep `.env` working on the demo machine.
 
@@ -22,11 +22,11 @@ This is **not** a licensed money transmitter, card processor, or production secu
 
 - **`/track`** — look up by **transaction hash** (`GET /api/transfers/:txHash`).
 
-### UK → US bank cashout (Barclays as fixed UK source)
+### US → UK bank cashout (US source → UK destination)
 
-- Home page section: **debit** labeled **Barclays (UK)** → **credit** US bank (routing + account + optional US address).
+- Payments tab: **debit** a **US bank** (routing + account) → **credit** a **UK** sort code + account (+ optional US sender address metadata).
 - **Default:** local **demo rail** (timers + fake reference).
-- **Optional:** `PAYOUT_UK_US_MODE=wise_sandbox` + **Wise personal API token** → creates recipient, quote, and transfer on **`api.wise-sandbox.com`** (see `.env.example`).
+- **Optional:** `PAYOUT_US_UK_MODE=wise_sandbox` (or legacy `PAYOUT_UK_US_MODE`) + **Wise personal API token** → creates recipient, quote, and transfer on **`api.wise-sandbox.com`** (see `.env.example`).
 
 ### Coinbase Advanced Trade (API only)
 
@@ -69,6 +69,8 @@ npm run dev
 
 Copy **`backend/.env.example`** → **`backend/.env`** and fill values (never commit `.env`).
 
+**Accounts (sign up / sign in)** use **MongoDB** plus **JWT**: set `MONGODB_URI` so the server can connect, and set `JWT_SECRET` to a long random string in production. Without MongoDB, registration returns HTTP 503 with a clear message.
+
 ### Frontend
 
 ```bash
@@ -94,17 +96,18 @@ See **`backend/.env.example`** for the full list. Highlights:
 
 | Variable | Role |
 |----------|------|
-| `MONGODB_URI` | Persistent transfers (optional) |
+| `MONGODB_URI` | Persistent transfers and **user accounts** (required for sign up) |
+| `JWT_SECRET`, `JWT_EXPIRES_IN` | Signed sessions for `/api/auth/*` (set a strong secret in production) |
 | `TRON_FULL_HOST`, `TRON_PRIVATE_KEY`, `TRON_RECEIVER_ADDRESS` | Real Nile micro-tx hash (optional) |
 | `COINBASE_ENABLED` / `COINBASE_STRICT` | Use Coinbase **public** FX on send |
 | `COINBASE_ADVANCED_TRADE_ENABLED`, `COINBASE_CDP_*` | Brokerage JWT + market buy endpoint |
-| `PAYOUT_UK_US_MODE`, `WISE_API_TOKEN`, … | Wise **sandbox** cashout instead of timer demo |
+| `PAYOUT_US_UK_MODE` (or `PAYOUT_UK_US_MODE`), `WISE_API_TOKEN`, … | Wise **sandbox** cashout instead of timer demo |
 
 ---
 
 ## Hackathon demo tips
 
-1. **Pick one hero path** (e.g. send + live rate + real Nile hash *or* UK→US + Wise sandbox). Showing everything often runs out of time.
+1. **Pick one hero path** (e.g. send + live rate + real Nile hash *or* US→UK + Wise sandbox). Showing everything often runs out of time.
 2. **Rehearse offline**: confirm backend starts, frontend hits the right port, and Mongo/TRON/Wise/Coinbase are either working or intentionally off with a one-line explanation.
 3. **Say the scope**: demo / MVP; real product would need compliance, fraud, KYC, and partner contracts.
 

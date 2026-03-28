@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { MainNav } from "../components/MainNav";
 
 export const metadata: Metadata = {
   title: "Remit",
@@ -10,7 +11,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="min-h-screen bg-zinc-950 antialiased">
+        <MainNav />
+        {children}
+      </body>
     </html>
   );
 }
