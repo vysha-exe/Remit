@@ -12,7 +12,7 @@ This is **not** a licensed money transmitter, card processor, or production secu
 
 ### Send money (US → destination country)
 
-- Search **destination country**, enter **sender / recipient**, **bank** (curated lists for GB, CN, RU, FR, DE), **account number**, and **demo card** fields (card number is formatted in the UI; the API stores **last 4 only**; expiry/CVV are not sent to the server).
+- Search **destination country**, enter **sender / recipient**, **bank** (curated lists for GB, CN, RU, FR, DE), **account number**, and **sender card** fields (card number is formatted in the UI; the API stores **last 4 only**; expiry/CVV are not sent to the server).
 - Live **FX preview** per country.
 - **Submit** runs `POST /api/send`: USD→destination fiat using **exchange rates** (Open ER API by default; **Coinbase public rates** or **Bybit P2P** if enabled), then records a **settlement reference** on **TRON Nile (testnet)** when configured: optional **TRC-20 stablecoin** (`mint` or `transfer`), else **1 SUN TRX**, else an **in-app-only** hash (see **Stablecoin connection** below).
 - **Persists** to **MongoDB** when `MONGODB_URI` connects; otherwise **in-memory** (data lost on restart).

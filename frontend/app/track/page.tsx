@@ -2,20 +2,54 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import {
+  TransferFlowDiagram,
+  type TransferFlowTransfer
+} from "../../components/TransferFlowDiagram";
 
 type Transfer = {
   id: string;
   recipientName: string;
+  recipientBankName?: string;
   destinationCountry: string;
   destinationCurrency: string;
   destinationAmount: number;
   usdAmount: number;
+  usdcAmount?: number;
+  exchangeRate?: number;
+  quoteSource?: string;
   feeUsd: number;
   txHash: string;
   status: "Pending" | "Confirmed" | "Completed" | "Failed";
   estimatedCompletionMinutes: number;
   createdAt: string;
+  chainSettlement?: "trc20_mint" | "trc20_stable" | "trx_sun" | "simulated";
 };
+
+function transferToFlowTransfer(t: Transfer): TransferFlowTransfer {
+  const usd = t.usdAmount;
+  const usdc = t.usdcAmount ?? usd;
+  const exchangeRate =
+    t.exchangeRate != null && Number.isFinite(t.exchangeRate)
+      ? t.exchangeRate
+      : usd > 0
+        ? t.destinationAmount / usd
+        : 0;
+  return {
+    id: t.id,
+    usdAmount: usd,
+    usdcAmount: usdc,
+    destinationAmount: t.destinationAmount,
+    destinationCurrency: t.destinationCurrency,
+    destinationCountry: t.destinationCountry,
+    recipientBankName: (t.recipientBankName && t.recipientBankName.trim()) || "Recipient bank",
+    recipientName: t.recipientName,
+    exchangeRate,
+    txHash: t.txHash,
+    chainSettlement: t.chainSettlement,
+    quoteSource: t.quoteSource
+  };
+}
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
@@ -106,7 +140,10 @@ export default function TrackPage() {
         {transfer ? (
           <section className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
             <h2 className="text-lg font-semibold text-white">Transfer Details</h2>
-            <div className="mt-4 space-y-3 text-sm">
+            <div className="mt-4 mb-6">
+              <TransferFlowDiagram transfer={transferToFlowTransfer(transfer)} />
+            </div>
+            <div className="space-y-3 text-sm">
               <Row label="Recipient" value={transfer.recipientName} />
               <Row label="Sent" value={`$${transfer.usdAmount.toFixed(2)}`} />
               <Row

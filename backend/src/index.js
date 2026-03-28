@@ -25,6 +25,7 @@ import {
 import { chatCompletion } from "./chatAssistant.js";
 import { attachUserAuthRoutes } from "./userAuth.js";
 import { executeChainSettlement } from "./tronSettlement.js";
+import { isEmailConfigured, sendTransferConfirmationEmail } from "./emailConfirmation.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -168,7 +169,8 @@ const transferSchema = new mongoose.Schema(
       enum: ["trc20_mint", "trc20_stable", "trx_sun", "simulated"],
       default: "simulated"
     },
-    chainNote: { type: String, default: "" }
+    chainNote: { type: String, default: "" },
+    senderEmail: { type: String, default: "" }
   },
   { timestamps: true }
 );
@@ -700,6 +702,7 @@ app.post("/api/send", async (req, res) => {
     const {
       amountUsd,
       senderName,
+      senderEmail,
       recipientName,
       recipientBankName,
       recipientBankAccountNumber,
@@ -724,13 +727,23 @@ app.post("/api/send", async (req, res) => {
       return res.status(400).json({ message: "Recipient bank account number is required." });
     }
     if (!recipientCardholderName || typeof recipientCardholderName !== "string") {
-      return res.status(400).json({ message: "Recipient cardholder name is required." });
+      return res.status(400).json({ message: "Sender cardholder name is required." });
     }
     if (!recipientCardNumber || typeof recipientCardNumber !== "string") {
-      return res.status(400).json({ message: "Recipient card number is required." });
+      return res.status(400).json({ message: "Sender card number is required." });
     }
     if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
       return res.status(400).json({ message: "Amount must be greater than zero." });
+    }
+    const emailTrimmed =
+      typeof senderEmail === "string" && senderEmail.trim()
+        ? senderEmail.trim()
+        : "";
+    if (emailTrimmed) {
+      const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed);
+      if (!ok) {
+        return res.status(400).json({ message: "Enter a valid confirmation email or leave it blank." });
+      }
     }
     const destination = await resolveCountryCurrency(destinationCode);
     if (!destination) {
@@ -792,13 +805,26 @@ app.post("/api/send", async (req, res) => {
       feeUsd: 0,
       source: "US Sender",
       estimatedCompletionMinutes: 10,
-      status: "Pending"
+      status: "Pending",
+      senderEmail: emailTrimmed
     });
+
+    if (emailTrimmed && isEmailConfigured()) {
+      void sendTransferConfirmationEmail({ to: emailTrimmed, transfer }).then(
+        () => console.log("[email] confirmation sent to", emailTrimmed),
+        (err) => console.warn("[email] confirmation failed:", err?.message || err)
+      );
+    } else if (emailTrimmed && !isEmailConfigured()) {
+      console.warn("[email] senderEmail provided but SMTP is not configured (see .env.example).");
+    }
 
     setTimeout(() => updateStatus(transfer.id, "Confirmed"), 2500);
     setTimeout(() => updateStatus(transfer.id, "Completed"), 5000);
 
-    return res.status(201).json(transfer);
+    return res.status(201).json({
+      ...transfer,
+      emailConfirmationQueued: Boolean(emailTrimmed && isEmailConfigured())
+    });
   } catch (error) {
     const detail = error?.message || String(error);
     console.error("[api/send]", detail);

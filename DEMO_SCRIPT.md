@@ -29,7 +29,7 @@ Use this as a narrator outline. **Skip or shorten** any step whose backend piece
 3. **Destination country** — Type to search, pick one with a **curated bank list** (e.g. **United Kingdom**) so the bank dropdown behaves well.
 4. **Bank** — Pick from suggestions.
 5. **Account number** — Any demo-style digits.
-6. **Card block** — Cardholder + number + expiry + CVV. *“We only persist last four on the card; expiry and CVV stay client-side for this demo UI.”*
+6. **Sender card block** — Cardholder + number + expiry + CVV. *“We only persist last four on the card; expiry and CVV stay client-side for this demo UI.”*
 7. Check **confirmation** → **Send**.
 
 **After submit:**

@@ -2,10 +2,13 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { TransferFlowDiagram } from "./TransferFlowDiagram";
 
 type SendResponse = {
   id: string;
   senderName: string;
+  senderEmail?: string;
+  emailConfirmationQueued?: boolean;
   recipientName: string;
   recipientBankName: string;
   recipientBankAccountNumber: string;
@@ -25,6 +28,7 @@ type SendResponse = {
   createdAt: string;
   source: string;
   feeUsd: number;
+  quoteSource?: string;
 };
 
 type UsUkPayoutPublic = {
@@ -230,6 +234,7 @@ function clearStoredLastSend() {
 export default function PaymentsDashboard() {
   const [amount, setAmount] = useState("");
   const [senderName, setSenderName] = useState("");
+  const [senderEmail, setSenderEmail] = useState("");
   const [recipientName, setRecipientName] = useState("");
   const [recipientBankName, setRecipientBankName] = useState("");
   const [bankDropdownOpen, setBankDropdownOpen] = useState(false);
@@ -490,7 +495,7 @@ export default function PaymentsDashboard() {
         return;
       }
       if (!confirmVerification) {
-        setError("Please confirm payment verification details before sending.");
+        setError("Please confirm recipient bank and sender card details before sending.");
         setLoading(false);
         return;
       }
@@ -507,6 +512,7 @@ export default function PaymentsDashboard() {
         body: JSON.stringify({
           amountUsd: amountNum,
           senderName,
+          senderEmail: senderEmail.trim() || undefined,
           recipientName,
           recipientBankName: matchedBank,
           recipientBankAccountNumber,
@@ -537,6 +543,7 @@ export default function PaymentsDashboard() {
       writeStoredLastSend(sent);
       setAmount("");
       setSenderName("");
+      setSenderEmail("");
       setRecipientName("");
       setRecipientBankName("");
       setRecipientBankAccountNumber("");
@@ -745,6 +752,24 @@ export default function PaymentsDashboard() {
               </label>
 
               <label className="block">
+                <span className="mb-1 block text-sm font-medium text-zinc-300">
+                  Confirmation email <span className="font-normal text-zinc-500">(optional)</span>
+                </span>
+                <input
+                  type="email"
+                  name="remit-sender-email"
+                  autoComplete="email"
+                  value={senderEmail}
+                  onChange={(e) => setSenderEmail(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-600 bg-zinc-950 px-4 py-2.5 text-white outline-none focus:border-orange-500"
+                  placeholder="you@example.com"
+                />
+                <p className="mt-1 text-xs text-zinc-500">
+                  When SMTP is configured on the server, we email a receipt with your tracking reference.
+                </p>
+              </label>
+
+              <label className="block">
                 <span className="mb-1 block text-sm font-medium text-zinc-300">Amount (USD)</span>
                 <input
                   type="number"
@@ -863,21 +888,21 @@ export default function PaymentsDashboard() {
               </label>
 
               <div className="rounded-xl border border-zinc-700 bg-zinc-950 p-4">
-                <p className="mb-3 text-sm font-medium text-zinc-200">Recipient card verification</p>
+                <p className="mb-3 text-sm font-medium text-zinc-200">Sender card verification</p>
                 <div className="space-y-3">
                   <input
                     type="text"
-                    name="remit-recipient-cc-name"
+                    name="remit-sender-cc-name"
                     autoComplete="cc-name"
                     value={recipientCardholderName}
                     onChange={(e) => setRecipientCardholderName(e.target.value)}
                     className="w-full rounded-xl border border-zinc-600 bg-zinc-900 px-4 py-2.5 text-white outline-none focus:border-orange-500"
-                    placeholder="Cardholder name"
+                    placeholder="Sender name on card"
                     required
                   />
                   <input
                     type="text"
-                    name="remit-recipient-cc-number"
+                    name="remit-sender-cc-number"
                     inputMode="numeric"
                     autoComplete="cc-number"
                     pattern="[0-9 ]*"
@@ -890,7 +915,7 @@ export default function PaymentsDashboard() {
                   <div className="grid grid-cols-2 gap-3">
                     <input
                       type="text"
-                      name="remit-recipient-cc-exp"
+                      name="remit-sender-cc-exp"
                       inputMode="numeric"
                       autoComplete="cc-exp"
                       value={recipientCardExpiry}
@@ -901,7 +926,7 @@ export default function PaymentsDashboard() {
                     />
                     <input
                       type="text"
-                      name="remit-recipient-cc-csc"
+                      name="remit-sender-cc-csc"
                       inputMode="numeric"
                       autoComplete="cc-csc"
                       maxLength={4}
@@ -924,7 +949,7 @@ export default function PaymentsDashboard() {
                   onChange={(e) => setConfirmVerification(e.target.checked)}
                   className="mt-1"
                 />
-                <span>I confirm recipient bank and card verification details are correct.</span>
+                <span>I confirm recipient bank details and sender card verification are correct.</span>
               </label>
 
               <button
@@ -965,15 +990,23 @@ export default function PaymentsDashboard() {
               </p>
             ) : (
               <div className="mt-4 space-y-3 text-sm">
+                <div className="mb-6">
+                  <TransferFlowDiagram transfer={lastTransfer} />
+                </div>
                 {(() => {
                   const onChain =
                     lastTransfer.chainSettlement === "trc20_mint" ||
                     lastTransfer.chainSettlement === "trc20_stable" ||
                     lastTransfer.chainSettlement === "trx_sun";
+                  /** Backend stores real Nile tx ids as 64 hex chars without 0x; simulated refs use 0x + 64 hex. */
+                  const txRaw = lastTransfer.txHash.trim();
+                  const isNileTxId =
+                    !txRaw.startsWith("0x") && /^[0-9a-f]{64}$/i.test(txRaw);
+                  const showNileExplorer = onChain || isNileTxId;
                   return (
                 <div
                   className={`rounded-xl border p-4 ${
-                    onChain
+                    showNileExplorer
                       ? "border-emerald-500/40 bg-emerald-500/5"
                       : "border-amber-500/40 bg-amber-500/5"
                   }`}
@@ -996,7 +1029,7 @@ export default function PaymentsDashboard() {
                     >
                       Open Track
                     </Link>
-                    {onChain && (
+                    {showNileExplorer ? (
                       <a
                         href={`https://nile.tronscan.org/#/transaction/${lastTransfer.txHash.replace(/^0x/i, "")}`}
                         target="_blank"
@@ -1005,30 +1038,20 @@ export default function PaymentsDashboard() {
                       >
                         View on Tronscan (Nile)
                       </a>
-                    )}
+                    ) : null}
                   </div>
-                  {!onChain ? (
-                    <p className="mt-2 text-xs text-amber-200/90">
-                      This id is for in-app tracking only (not on TRON). Set{" "}
-                      <code className="text-zinc-300">TRON_PRIVATE_KEY</code> +{" "}
-                      <code className="text-zinc-300">TRON_RECEIVER_ADDRESS</code> in the backend for a real Nile tx; add{" "}
-                      <code className="text-zinc-300">TRON_STABLE_CONTRACT</code> (+ optional{" "}
-                      <code className="text-zinc-300">TRON_STABLE_USE_MINT=true</code> for ProximityStable mint).
-                    </p>
-                  ) : (
-                    <p className="mt-2 text-xs text-emerald-200/80">
-                      On-chain:{" "}
-                      {lastTransfer.chainSettlement === "trc20_mint"
-                        ? "TRC-20 mint (test stablecoin)"
-                        : lastTransfer.chainSettlement === "trc20_stable"
-                          ? "TRC-20 stablecoin transfer"
-                          : "1 SUN TRX"}{" "}
-                      · {lastTransfer.chainNote || ""}
-                    </p>
-                  )}
                 </div>
                   );
                 })()}
+                {lastTransfer.emailConfirmationQueued ? (
+                  <p className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-200">
+                    Confirmation email sent with your tracking reference.
+                  </p>
+                ) : lastTransfer.senderEmail ? (
+                  <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200/90">
+                    Email saved — confirmation email needs SMTP on the server (see <code className="text-zinc-400">.env.example</code>).
+                  </p>
+                ) : null}
                 <Info label="Sent" value={`$${lastTransfer.usdAmount.toFixed(2)}`} />
                 <Info
                   label="Received"
@@ -1037,7 +1060,7 @@ export default function PaymentsDashboard() {
                 <Info label="Sender" value={lastTransfer.senderName} />
                 <Info label="Country" value={lastTransfer.destinationCountry} />
                 <Info label="Recipient Bank" value={lastTransfer.recipientBankName} />
-                <Info label="Card (last4)" value={`**** ${lastTransfer.recipientCardLast4}`} />
+                <Info label="Sender card (last4)" value={`**** ${lastTransfer.recipientCardLast4}`} />
                 <Info label="Time" value={`~${lastTransfer.estimatedCompletionMinutes} minutes`} />
                 <Info label="Fee" value={`$${lastTransfer.feeUsd.toFixed(2)}`} />
                 <Info label="Status" value={lastTransfer.status} />
