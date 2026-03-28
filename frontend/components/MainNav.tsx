@@ -24,12 +24,11 @@ export function MainNav() {
           <img
             src="/logo.png"
             alt=""
-            width={112}
-            height={112}
+            width={123}
+            height={123}
             decoding="async"
             fetchPriority="high"
-            className="h-[2.45rem] w-auto shrink-0 object-contain sm:h-[2.8rem]"
-            style={{ imageRendering: "auto" }}
+            className="h-[2.695rem] w-auto shrink-0 object-contain sm:h-[3.08rem]"
           />
           <span>
             REMIT<span className="text-orange-400">.</span>
