@@ -14,7 +14,7 @@ This is **not** a licensed money transmitter, card processor, or production secu
 
 - Search **destination country**, enter **sender / recipient**, **bank** (curated lists for GB, CN, RU, FR, DE), **account number**, and **demo card** fields (card number is formatted in the UI; the API stores **last 4 only**; expiry/CVV are not sent to the server).
 - Live **FX preview** per country.
-- **Submit** runs `POST /api/send`: USD→destination fiat using **exchange rates** (Open ER API by default; **Coinbase public rates** or **Bybit P2P** if enabled), records a **tx hash** from **real Nile TRX** (1 SUN) when `TRON_*` is configured, otherwise a **mock** hash.
+- **Submit** runs `POST /api/send`: USD→destination fiat using **exchange rates** (Open ER API by default; **Coinbase public rates** or **Bybit P2P** if enabled), then records a **settlement reference** on **TRON Nile (testnet)** when configured: optional **TRC-20 stablecoin** (`mint` or `transfer`), else **1 SUN TRX**, else an **in-app-only** hash (see **Stablecoin connection** below).
 - **Persists** to **MongoDB** when `MONGODB_URI` connects; otherwise **in-memory** (data lost on restart).
 - **Recent transfers** table and a short **status timeline** (timer-based progression for the demo).
 
@@ -88,6 +88,23 @@ NEXT_PUBLIC_API_URL=http://localhost:4000
 ```
 
 Open **http://localhost:3000** (or the port Next prints).
+
+---
+
+## Stablecoin connection (TRON / Nile)
+
+All on-chain settlement in this repo targets **TRON Nile** (`TRON_FULL_HOST`, default `https://api.nileex.io`)—**testnet only**, not mainnet funds.
+
+On each successful `POST /api/send`, the backend runs **`executeChainSettlement`** in this order:
+
+1. **`TRON_STABLE_CONTRACT` + `TRON_STABLE_USE_MINT=true`** — Calls **`mint(TRON_RECEIVER_ADDRESS, amount)`** on your contract (e.g. **ProximityStable** pUSD). The deployer wallet must match **`TRON_PRIVATE_KEY`**; no pre-funded token balance needed.
+2. **Else `TRON_STABLE_CONTRACT` set, mint off or failed** — TRC-20 **`transfer`** to the receiver (e.g. Nile **USDT**); the sender wallet must **already hold** that token.
+3. **Else** — Native **1 SUN TRX** to `TRON_RECEIVER_ADDRESS`, only if the node **accepts** the broadcast (`result: true`).
+4. **Else** — A random **reference hash** stored with `chainSettlement: "simulated"` (not on-chain).
+
+The API persists **`chainSettlement`** (`trc20_mint`, `trc20_stable`, `trx_sun`, or `simulated`) and **`chainNote`** on each transfer so the UI and **Track** can tell whether the id is a real Nile tx.
+
+**Contracts & tooling:** `contracts/ProximityStable.sol`; compile with `npm run compile:contract`, deploy with `npm run deploy:stable` from **`backend/`** (needs Nile TRX for fees).
 
 ---
 

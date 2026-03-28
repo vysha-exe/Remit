@@ -11,7 +11,7 @@ export default function ContactPage() {
     {
       role: "assistant",
       content:
-        "Hi — I’m **Remit Assist**. Ask about sending money, tracking a transfer, US→UK bank cashout, fees, or configuring TRON, MongoDB, Coinbase, or Wise."
+        "Hi — I’m Remit Assist. Ask about sending money, tracking a transfer, US→UK bank cashout, fees, or configuring TRON, MongoDB, Coinbase, or Wise."
     }
   ]);
   const [input, setInput] = useState("");
@@ -79,10 +79,6 @@ export default function ContactPage() {
                 <span className="font-medium text-orange-300">Accounts</span> — Sign in links your session when the API
                 and database are configured
               </li>
-              <li>
-                <span className="font-medium text-orange-300">Assistant</span> — Powered by OpenAI when the server
-                has an API key; otherwise short rule-based answers
-              </li>
             </ul>
           </div>
 
@@ -113,10 +109,6 @@ export default function ContactPage() {
               <div ref={bottomRef} />
             </div>
             <form onSubmit={handleSubmit} className="border-t border-zinc-800 p-3">
-              <p className="mb-2 text-[10px] text-zinc-500">
-                With <code className="text-zinc-400">OPENAI_API_KEY</code> set on the server, replies use GPT; otherwise
-                you get concise rule-based answers.
-              </p>
               {error ? <p className="mb-2 text-xs text-red-300">{error}</p> : null}
               <div className="flex gap-2">
                 <input
