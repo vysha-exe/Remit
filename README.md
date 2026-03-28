@@ -103,16 +103,6 @@ See **`backend/.env.example`** for the full list. Highlights:
 | `COINBASE_ADVANCED_TRADE_ENABLED`, `COINBASE_CDP_*` | Brokerage JWT + market buy endpoint |
 | `PAYOUT_US_UK_MODE` (or `PAYOUT_UK_US_MODE`), `WISE_API_TOKEN`, … | Wise **sandbox** cashout instead of timer demo |
 
----
-
-## Hackathon demo tips
-
-1. **Pick one hero path** (e.g. send + live rate + real Nile hash *or* US→UK + Wise sandbox). Showing everything often runs out of time.
-2. **Rehearse offline**: confirm backend starts, frontend hits the right port, and Mongo/TRON/Wise/Coinbase are either working or intentionally off with a one-line explanation.
-3. **Say the scope**: demo / MVP; real product would need compliance, fraud, KYC, and partner contracts.
-
----
-
 ## License / credits
 
 Built as a learning and demo project. Third-party APIs (Coinbase, Wise, TRON, etc.) are subject to their own terms.
