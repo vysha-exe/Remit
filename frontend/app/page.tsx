@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
 type SendResponse = {
@@ -23,6 +23,35 @@ type SendResponse = {
   createdAt: string;
   source: string;
   feeUsd: number;
+};
+
+type UkUsPayoutPublic = {
+  id: string;
+  corridor: string;
+  sourceBank: string;
+  senderName: string;
+  ukSortCodeMasked: string;
+  ukAccountLast4: string;
+  recipientName: string;
+  usBankName: string;
+  usRoutingMasked: string;
+  usAccountLast4: string;
+  amountGbp: number;
+  estimatedUsdPayout: number;
+  status: "Submitted" | "Processing" | "Completed" | "Failed";
+  providerRef: string;
+  payoutMode?: "demo" | "wise_sandbox";
+  wiseTransferId?: string;
+  wiseRawStatus?: string;
+  createdAt: string;
+  note?: string;
+};
+
+type UkUsPayoutConfig = {
+  corridor: string;
+  sourceBank: string;
+  modes: { demo: boolean; wiseSandbox: boolean };
+  wiseSandboxBase: string;
 };
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
@@ -151,6 +180,13 @@ function formatCardNumber(value: string) {
     .trim();
 }
 
+function formatUkSortCode(value: string) {
+  const d = value.replace(/\D/g, "").slice(0, 6);
+  if (d.length <= 2) return d;
+  if (d.length <= 4) return `${d.slice(0, 2)}-${d.slice(2)}`;
+  return `${d.slice(0, 2)}-${d.slice(2, 4)}-${d.slice(4, 6)}`;
+}
+
 export default function HomePage() {
   const [amount, setAmount] = useState("100");
   const [senderName, setSenderName] = useState("");
@@ -175,6 +211,25 @@ export default function HomePage() {
   const [history, setHistory] = useState<SendResponse[]>([]);
   const countryRef = useRef<HTMLDivElement | null>(null);
   const bankRef = useRef<HTMLDivElement | null>(null);
+  const trackedUkUsPayoutId = useRef<string | null>(null);
+
+  const [ukUsSenderName, setUkUsSenderName] = useState("");
+  const [ukUsSortCode, setUkUsSortCode] = useState("");
+  const [ukUsAccountNumber, setUkUsAccountNumber] = useState("");
+  const [ukUsRecipientName, setUkUsRecipientName] = useState("");
+  const [ukUsBankName, setUkUsBankName] = useState("");
+  const [ukUsRouting, setUkUsRouting] = useState("");
+  const [ukUsAccount, setUkUsAccount] = useState("");
+  const [ukUsAmountGbp, setUkUsAmountGbp] = useState("500");
+  const [ukUsAddressLine, setUkUsAddressLine] = useState("");
+  const [ukUsCity, setUkUsCity] = useState("");
+  const [ukUsState, setUkUsState] = useState("");
+  const [ukUsPostCode, setUkUsPostCode] = useState("");
+  const [payoutLoading, setPayoutLoading] = useState(false);
+  const [payoutError, setPayoutError] = useState("");
+  const [lastUkUsPayout, setLastUkUsPayout] = useState<UkUsPayoutPublic | null>(null);
+  const [ukUsPayoutHistory, setUkUsPayoutHistory] = useState<UkUsPayoutPublic[]>([]);
+  const [ukUsConfig, setUkUsConfig] = useState<UkUsPayoutConfig | null>(null);
 
   const receivePreview = useMemo(() => {
     const n = Number(amount);
@@ -222,6 +277,25 @@ export default function HomePage() {
     }
   }
 
+  const loadUkUsPayouts = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/payouts/uk-to-us`);
+      if (!response.ok) return;
+      const data = (await response.json()) as { payouts: UkUsPayoutPublic[] };
+      const list = data.payouts || [];
+      setUkUsPayoutHistory(list);
+      const tid = trackedUkUsPayoutId.current;
+      if (tid) {
+        const found = list.find((p) => p.id === tid);
+        if (found) setLastUkUsPayout(found);
+      } else if (list.length > 0) {
+        setLastUkUsPayout(list[0]);
+      }
+    } catch {
+      // optional section
+    }
+  }, []);
+
   useEffect(() => {
     async function loadCountries() {
       try {
@@ -243,7 +317,27 @@ export default function HomePage() {
 
     loadCountries();
     loadHistory();
-  }, []);
+    loadUkUsPayouts();
+    (async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/payouts/uk-to-us/config`);
+        if (response.ok) {
+          setUkUsConfig((await response.json()) as UkUsPayoutConfig);
+        }
+      } catch {
+        // optional
+      }
+    })();
+  }, [loadUkUsPayouts]);
+
+  useEffect(() => {
+    const pending = ukUsPayoutHistory.some(
+      (p) => p.status === "Submitted" || p.status === "Processing"
+    );
+    if (!pending) return;
+    const id = setInterval(loadUkUsPayouts, 2000);
+    return () => clearInterval(id);
+  }, [ukUsPayoutHistory, loadUkUsPayouts]);
 
   useEffect(() => {
     let active = true;
@@ -378,6 +472,57 @@ export default function HomePage() {
       setError("Transaction failed. Please retry or check wallet balance.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleUkUsPayoutSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPayoutLoading(true);
+    setPayoutError("");
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/payouts/uk-to-us`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          senderName: ukUsSenderName,
+          ukSortCode: ukUsSortCode,
+          ukAccountNumber: ukUsAccountNumber,
+          recipientName: ukUsRecipientName,
+          usBankName: ukUsBankName,
+          usRoutingNumber: ukUsRouting,
+          usAccountNumber: ukUsAccount,
+          amountGbp: Number(ukUsAmountGbp),
+          usAddressLine: ukUsAddressLine || undefined,
+          usCity: ukUsCity || undefined,
+          usState: ukUsState || undefined,
+          usPostCode: ukUsPostCode || undefined
+        })
+      });
+      const data = (await response.json()) as UkUsPayoutPublic | { message: string };
+      if (!response.ok) {
+        setPayoutError("message" in data ? data.message : "Cashout request failed.");
+        return;
+      }
+      const payout = data as UkUsPayoutPublic;
+      trackedUkUsPayoutId.current = payout.id;
+      setLastUkUsPayout(payout);
+      await loadUkUsPayouts();
+      setUkUsSenderName("");
+      setUkUsSortCode("");
+      setUkUsAccountNumber("");
+      setUkUsRecipientName("");
+      setUkUsBankName("");
+      setUkUsRouting("");
+      setUkUsAccount("");
+      setUkUsAmountGbp("500");
+      setUkUsAddressLine("");
+      setUkUsCity("");
+      setUkUsState("");
+      setUkUsPostCode("");
+    } catch {
+      setPayoutError("Cashout request failed. Is the backend running?");
+    } finally {
+      setPayoutLoading(false);
     }
   }
 
@@ -645,6 +790,261 @@ export default function HomePage() {
           </section>
         </div>
 
+        <section className="mt-6 rounded-2xl border border-emerald-500/30 bg-zinc-900 p-6 shadow-sm">
+          <div className="flex flex-col gap-2 border-b border-zinc-800 pb-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-white">UK → US bank cashout</h2>
+              <p className="mt-1 text-sm text-zinc-400">
+                Fixed corridor for this build: debit{" "}
+                <span className="font-medium text-emerald-300">Barclays (UK)</span> → credit a US bank via ACH /
+                Fedwire-style rail (demo).
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-200">
+                Barclays only · UK → US
+              </span>
+              {ukUsConfig?.modes.wiseSandbox ? (
+                <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-3 py-1 text-xs font-medium text-sky-200">
+                  Wise sandbox API on
+                </span>
+              ) : (
+                <span className="rounded-full border border-zinc-600 bg-zinc-800 px-3 py-1 text-xs text-zinc-400">
+                  Local demo mode (no Wise token)
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-8 lg:grid-cols-2">
+            <form className="space-y-4" onSubmit={handleUkUsPayoutSubmit}>
+              <div className="rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-300">
+                <p className="font-medium text-zinc-200">Source (hardcoded)</p>
+                <p className="mt-1 text-emerald-200/90">Barclays — United Kingdom</p>
+              </div>
+
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-zinc-300">UK account holder name</span>
+                <input
+                  type="text"
+                  value={ukUsSenderName}
+                  onChange={(e) => setUkUsSenderName(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-600 bg-zinc-950 px-4 py-2.5 text-white outline-none focus:border-emerald-500"
+                  placeholder="Name on Barclays account"
+                  required
+                />
+              </label>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-sm font-medium text-zinc-300">UK sort code</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={ukUsSortCode}
+                    onChange={(e) => setUkUsSortCode(formatUkSortCode(e.target.value))}
+                    className="w-full rounded-xl border border-zinc-600 bg-zinc-950 px-4 py-2.5 font-mono text-white outline-none focus:border-emerald-500"
+                    placeholder="12-34-56"
+                    required
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-sm font-medium text-zinc-300">UK account number</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={8}
+                    value={ukUsAccountNumber}
+                    onChange={(e) => setUkUsAccountNumber(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                    className="w-full rounded-xl border border-zinc-600 bg-zinc-950 px-4 py-2.5 font-mono text-white outline-none focus:border-emerald-500"
+                    placeholder="8 digits"
+                    required
+                  />
+                </label>
+              </div>
+
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-zinc-300">US recipient name</span>
+                <input
+                  type="text"
+                  value={ukUsRecipientName}
+                  onChange={(e) => setUkUsRecipientName(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-600 bg-zinc-950 px-4 py-2.5 text-white outline-none focus:border-emerald-500"
+                  required
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-zinc-300">US bank name</span>
+                <input
+                  type="text"
+                  value={ukUsBankName}
+                  onChange={(e) => setUkUsBankName(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-600 bg-zinc-950 px-4 py-2.5 text-white outline-none focus:border-emerald-500"
+                  placeholder="e.g. Chase, Bank of America"
+                  required
+                />
+              </label>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-sm font-medium text-zinc-300">US routing (ABA)</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={9}
+                    value={ukUsRouting}
+                    onChange={(e) => setUkUsRouting(e.target.value.replace(/\D/g, "").slice(0, 9))}
+                    className="w-full rounded-xl border border-zinc-600 bg-zinc-950 px-4 py-2.5 font-mono text-white outline-none focus:border-emerald-500"
+                    placeholder="9 digits"
+                    required
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-sm font-medium text-zinc-300">US account number</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={ukUsAccount}
+                    onChange={(e) => setUkUsAccount(e.target.value.replace(/\D/g, "").slice(0, 17))}
+                    className="w-full rounded-xl border border-zinc-600 bg-zinc-950 px-4 py-2.5 font-mono text-white outline-none focus:border-emerald-500"
+                    required
+                  />
+                </label>
+              </div>
+
+              <div className="rounded-xl border border-zinc-700 bg-zinc-950 p-4">
+                <p className="text-sm font-medium text-zinc-200">US recipient address</p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Required by payout APIs for USD (e.g. Wise). Leave blank to use sandbox defaults on the server.
+                </p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <label className="block sm:col-span-2">
+                    <span className="mb-1 block text-xs text-zinc-400">Street</span>
+                    <input
+                      type="text"
+                      value={ukUsAddressLine}
+                      onChange={(e) => setUkUsAddressLine(e.target.value)}
+                      className="w-full rounded-lg border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+                      placeholder="Optional"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-zinc-400">City</span>
+                    <input
+                      type="text"
+                      value={ukUsCity}
+                      onChange={(e) => setUkUsCity(e.target.value)}
+                      className="w-full rounded-lg border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-zinc-400">State (2 letters)</span>
+                    <input
+                      type="text"
+                      maxLength={2}
+                      value={ukUsState}
+                      onChange={(e) => setUkUsState(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2))}
+                      className="w-full rounded-lg border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+                    />
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <span className="mb-1 block text-xs text-zinc-400">ZIP</span>
+                    <input
+                      type="text"
+                      value={ukUsPostCode}
+                      onChange={(e) => setUkUsPostCode(e.target.value)}
+                      className="w-full rounded-lg border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-zinc-300">Amount (GBP)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={50000}
+                  step="1"
+                  value={ukUsAmountGbp}
+                  onChange={(e) => setUkUsAmountGbp(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-600 bg-zinc-950 px-4 py-2.5 text-white outline-none focus:border-emerald-500"
+                  required
+                />
+              </label>
+
+              <button
+                type="submit"
+                disabled={payoutLoading}
+                className="w-full rounded-xl bg-emerald-600 px-4 py-2.5 font-medium text-white transition hover:bg-emerald-500 disabled:opacity-60"
+              >
+                {payoutLoading ? "Submitting cashout…" : "Request UK → US cashout"}
+              </button>
+
+              {payoutError ? (
+                <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
+                  {payoutError}
+                </div>
+              ) : null}
+            </form>
+
+            <div>
+              <h3 className="text-sm font-medium uppercase tracking-wide text-zinc-400">Latest cashout</h3>
+              {!lastUkUsPayout ? (
+                <p className="mt-3 text-sm text-zinc-500">Submit a request to see status and USD estimate.</p>
+              ) : (
+                <div className="mt-4 space-y-3 text-sm">
+                  <Info label="Corridor" value={`${lastUkUsPayout.corridor} · ${lastUkUsPayout.sourceBank}`} />
+                  <Info label="From (masked)" value={`Sort ${lastUkUsPayout.ukSortCodeMasked} · acct …${lastUkUsPayout.ukAccountLast4}`} />
+                  <Info label="UK sender" value={lastUkUsPayout.senderName} />
+                  <Info label="To US" value={`${lastUkUsPayout.recipientName} · ${lastUkUsPayout.usBankName}`} />
+                  <Info
+                    label="US account (masked)"
+                    value={`${lastUkUsPayout.usRoutingMasked} · …${lastUkUsPayout.usAccountLast4}`}
+                  />
+                  <Info label="Debit amount" value={`£${lastUkUsPayout.amountGbp.toLocaleString()} GBP`} />
+                  <Info label="Est. credit" value={`~$${lastUkUsPayout.estimatedUsdPayout.toFixed(2)} USD`} />
+                  <Info label="Mode" value={lastUkUsPayout.payoutMode === "wise_sandbox" ? "Wise sandbox" : "Local demo"} />
+                  <Info label="Status" value={lastUkUsPayout.status} />
+                  {lastUkUsPayout.wiseRawStatus ? (
+                    <Info label="Wise status" value={lastUkUsPayout.wiseRawStatus} mono />
+                  ) : null}
+                  {lastUkUsPayout.providerRef ? (
+                    <Info
+                      label={lastUkUsPayout.payoutMode === "wise_sandbox" ? "Provider ref" : "Rail ref (demo)"}
+                      value={lastUkUsPayout.providerRef}
+                      mono
+                    />
+                  ) : null}
+                  <PayoutStatusTimeline status={lastUkUsPayout.status} />
+                  {lastUkUsPayout.note ? (
+                    <p className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-500">
+                      {lastUkUsPayout.note}
+                    </p>
+                  ) : null}
+                </div>
+              )}
+
+              {ukUsPayoutHistory.length > 1 ? (
+                <div className="mt-8">
+                  <h4 className="text-xs font-medium uppercase tracking-wide text-zinc-500">Recent cashouts</h4>
+                  <ul className="mt-2 space-y-2 text-xs text-zinc-400">
+                    {ukUsPayoutHistory.slice(0, 5).map((p) => (
+                      <li key={p.id} className="flex justify-between gap-2 border-b border-zinc-800/80 py-2">
+                        <span>
+                          £{p.amountGbp} → ~${p.estimatedUsdPayout.toFixed(0)}
+                        </span>
+                        <span className="text-emerald-300/90">{p.status}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </section>
+
         <section className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-sm">
           <h3 className="text-lg font-semibold text-white">Recent Transfers</h3>
           {history.length === 0 ? (
@@ -680,6 +1080,33 @@ export default function HomePage() {
         </section>
       </div>
     </main>
+  );
+}
+
+function PayoutStatusTimeline({ status }: { status: UkUsPayoutPublic["status"] }) {
+  const steps: Array<"Submitted" | "Processing" | "Completed"> = ["Submitted", "Processing", "Completed"];
+  const idx = steps.indexOf(status as "Submitted" | "Processing" | "Completed");
+  const activeIndex = status === "Failed" ? 0 : idx < 0 ? 0 : idx;
+
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+      <p className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-400">Cashout progress</p>
+      <div className="grid grid-cols-3 gap-2">
+        {steps.map((step, index) => {
+          const isActive = index <= activeIndex;
+          return (
+            <div key={step} className="flex flex-col items-center gap-2">
+              <span
+                className={`h-2.5 w-full rounded-full transition-all ${
+                  isActive ? "bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.45)]" : "bg-zinc-700"
+                }`}
+              />
+              <span className={isActive ? "text-xs text-emerald-300" : "text-xs text-zinc-500"}>{step}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
