@@ -7,7 +7,8 @@
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "compile:contract": "node scripts/compile-proximity-stable.mjs",
-    "deploy:stable": "node scripts/deploy-proximity-stable.mjs"
+    "deploy:stable": "node scripts/deploy-proximity-stable.mjs",
+    "check:tron": "node scripts/check-tron-nile.mjs"
   },
   "dependencies": {
     "@coinbase/cdp-sdk": "^1.45.0",

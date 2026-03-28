@@ -104,7 +104,9 @@ On each successful `POST /api/send`, the backend runs **`executeChainSettlement`
 
 The API persists **`chainSettlement`** (`trc20_mint`, `trc20_stable`, `trx_sun`, or `simulated`) and **`chainNote`** on each transfer so the UI and **Track** can tell whether the id is a real Nile tx.
 
-**Contracts & tooling:** `contracts/ProximityStable.sol`; compile with `npm run compile:contract`, deploy with `npm run deploy:stable` from **`backend/`** (needs Nile TRX for fees).
+**Contracts & tooling:** `contracts/ProximityStable.sol`; compile with `npm run compile:contract`, deploy with `npm run deploy:stable` from **`backend/`** (needs Nile TRX for fees). **Debug connectivity:** from `backend/`, run `npm run check:tron` (prints wallet balance on Nile, whether `TRON_STABLE_CONTRACT` exists, and env hints).
+
+**How the contract fits TRON:** **ProximityStable** is a minimal **TRC-20–compatible** token (name/symbol/decimals, `transfer` / `approve` / `transferFrom`) deployed to **TRON’s TVM**, same interface family as mainnet USDT on TRON. The **deployer is `owner`** and the **only address** that can **`mint`**, crediting any recipient without pulling collateral from users—ideal for **Nile test USDC-style** balances. The **backend** uses **TronWeb** against **`TRON_FULL_HOST`** (Nile) to **`mint` or `transfer`** to `TRON_RECEIVER_ADDRESS` after a send, spending **test TRX** for fees and **energy/bandwidth**; that yields a **real transaction id** on **Nile Tronscan**, separate from fiat rails. Production USDT would use the same **TRC-20 call pattern** on **mainnet** with real liquidity and compliance.
 
 ---
 
@@ -131,14 +133,6 @@ The repo includes a minimal **mintable** TRC-20–style contract (`contracts/Pro
 3. Set **`TRON_STABLE_CONTRACT`** to the printed base58 address, **`TRON_STABLE_USE_MINT=true`**, and keep **`TRON_STABLE_TRANSFER_AMOUNT`** in smallest units (6 decimals: `1000` = 0.001 pUSD).
 
 The deployer is the **only minter**; the backend must use the same key as `TRON_PRIVATE_KEY`. Omit `TRON_STABLE_USE_MINT` or set it to `false` to use **transfer** from an existing token balance instead.
-
----
-
-## Hackathon demo tips
-
-1. **Pick one hero path** (e.g. send + live rate + real Nile hash *or* US→UK + Wise sandbox). Showing everything often runs out of time.
-2. **Rehearse offline**: confirm backend starts, frontend hits the right port, and Mongo/TRON/Wise/Coinbase are either working or intentionally off with a one-line explanation.
-3. **Say the scope**: demo / MVP; real product would need compliance, fraud, KYC, and partner contracts.
 
 ---
 

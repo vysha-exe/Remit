@@ -189,6 +189,44 @@ function formatUkSortCode(value: string) {
   return `${d.slice(0, 2)}-${d.slice(2, 4)}-${d.slice(4, 6)}`;
 }
 
+const LAST_SEND_STORAGE_KEY = "remit_last_send_v1";
+const LAST_SEND_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function readStoredLastSend(): SendResponse | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(LAST_SEND_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { savedAt: number; transfer: SendResponse };
+    if (!parsed?.transfer?.txHash || typeof parsed.savedAt !== "number") return null;
+    if (Date.now() - parsed.savedAt > LAST_SEND_MAX_AGE_MS) {
+      sessionStorage.removeItem(LAST_SEND_STORAGE_KEY);
+      return null;
+    }
+    return parsed.transfer;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredLastSend(transfer: SendResponse) {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(LAST_SEND_STORAGE_KEY, JSON.stringify({ savedAt: Date.now(), transfer }));
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
+function clearStoredLastSend() {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem(LAST_SEND_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 export default function PaymentsDashboard() {
   const [amount, setAmount] = useState("");
   const [senderName, setSenderName] = useState("");
@@ -275,7 +313,11 @@ export default function PaymentsDashboard() {
       const response = await fetch(`${API_BASE_URL}/api/transfers`);
       if (!response.ok) return;
       const data = (await response.json()) as { transfers: SendResponse[] };
-      setHistory(data.transfers || []);
+      const list = data.transfers || [];
+      setHistory(list);
+      if (list.length > 0) {
+        setLastTransfer((prev) => prev ?? list[0]);
+      }
     } catch {
       // Ignore silent errors for optional dashboard section.
     }
@@ -297,6 +339,13 @@ export default function PaymentsDashboard() {
       }
     } catch {
       // optional section
+    }
+  }, []);
+
+  useEffect(() => {
+    const stored = readStoredLastSend();
+    if (stored) {
+      setLastTransfer((p) => p ?? stored);
     }
   }, []);
 
@@ -483,7 +532,9 @@ export default function PaymentsDashboard() {
         return;
       }
 
-      setLastTransfer(data as SendResponse);
+      const sent = data as SendResponse;
+      setLastTransfer(sent);
+      writeStoredLastSend(sent);
       setAmount("");
       setSenderName("");
       setRecipientName("");
@@ -617,6 +668,59 @@ export default function PaymentsDashboard() {
             US / UK bank
           </button>
         </div>
+
+        {lastTransfer ? (
+          <div className="mb-6 rounded-xl border border-orange-500/35 bg-zinc-900/90 px-4 py-3 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                  Last international send · tracking hash
+                </p>
+                <p className="mt-1 break-all font-mono text-xs text-white sm:text-sm">{lastTransfer.txHash}</p>
+                <p className="mt-1 text-[10px] text-zinc-500">Stays here for 7 days in this browser (and while it remains in Recent transfers).</p>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(lastTransfer.txHash);
+                  }}
+                  className="rounded-lg bg-orange-500 px-2.5 py-1 text-xs font-semibold text-zinc-950 hover:bg-orange-400"
+                >
+                  Copy
+                </button>
+                <Link
+                  href={`/track?tx=${encodeURIComponent(lastTransfer.txHash)}`}
+                  className="rounded-lg border border-zinc-600 px-2.5 py-1 text-xs font-medium text-zinc-200 hover:bg-zinc-800"
+                >
+                  Track
+                </Link>
+                {lastTransfer.chainSettlement === "trc20_mint" ||
+                lastTransfer.chainSettlement === "trc20_stable" ||
+                lastTransfer.chainSettlement === "trx_sun" ? (
+                  <a
+                    href={`https://nile.tronscan.org/#/transaction/${lastTransfer.txHash.replace(/^0x/i, "")}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-lg border border-emerald-600/50 px-2.5 py-1 text-xs font-medium text-emerald-200 hover:bg-emerald-950/50"
+                  >
+                    Tronscan
+                  </a>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearStoredLastSend();
+                    setLastTransfer(null);
+                  }}
+                  className="rounded-lg border border-zinc-600 px-2.5 py-1 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {paymentsTab === "send" ? (
         <>
