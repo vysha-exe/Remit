@@ -1,8 +1,8 @@
 # Remit
 
-**Tagline:** *Send farther, pay nothing.*
+*Send farther, pay nothing.*
 
-Hackathon-style remittance demo: a consumer-facing **Next.js** UI with an **Express** backend, optional **MongoDB**, optional **TRON (Nile)** for a settlement hash, optional **Coinbase** (public FX and/or Advanced Trade), and optional **Wise sandbox** for a US→UK payout experiment.
+A consumer-facing **Next.js** UI with an **Express** backend, optional **MongoDB**, optional **TRON (Nile)** for a settlement hash, optional **Coinbase** (public FX and/or Advanced Trade), and optional **Wise sandbox** for a US→UK payout experiment.
 
 This is **not** a licensed money transmitter, card processor, or production security review. It *is* enough for a **clear live demo** if you rehearse one happy path and keep `.env` working on the demo machine.
 
